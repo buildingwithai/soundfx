@@ -31,7 +31,7 @@ soundfx hook-status <shell>
 ## Quick start
 
 ```bash
-npm install -g soundfx
+npm install -g @buildingwithai/soundfx
 soundfx doctor
 soundfx install-hook powershell
 soundfx tui
