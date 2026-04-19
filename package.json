@@ -1,0 +1,51 @@
+{
+  "name": "soundfx",
+  "version": "0.1.0",
+  "description": "Cross-platform terminal sound effects, shell hooks, and TUI configuration.",
+  "type": "module",
+  "bin": {
+    "soundfx": "./src/core/cli.js"
+  },
+  "files": [
+    "src/**/*",
+    "shared/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test:tui": "node ./src/core/cli.js tui --test",
+    "events": "node ./src/core/cli.js events",
+    "sounds": "node ./src/core/cli.js sounds"
+  },
+  "keywords": [
+    "cli",
+    "terminal",
+    "soundboard",
+    "powershell",
+    "bash",
+    "zsh",
+    "audio",
+    "hooks"
+  ],
+  "author": "SonicBarn",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/buildingwithai/soundfx.git"
+  },
+  "homepage": "https://github.com/buildingwithai/soundfx",
+  "bugs": {
+    "url": "https://github.com/buildingwithai/soundfx/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "ink": "^7.0.1",
+    "react": "^19.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
