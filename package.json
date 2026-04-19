@@ -1,6 +1,6 @@
 {
   "name": "@buildingwithai/soundfx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Cross-platform terminal sound effects, shell hooks, and TUI configuration.",
   "type": "module",
   "bin": {
