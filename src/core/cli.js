@@ -4,8 +4,10 @@ import {
   appendEventLog,
   clearEventLog,
   clearPlaybackLog,
+  detectPreferredShell,
   findEvent,
   findSound,
+  getDoctorReport,
   getHookSnippet,
   installHookSnippet,
   isHookInstalled,
@@ -52,8 +54,8 @@ if (command === 'hook-status') {
   }
   const status = isHookInstalled(shellName);
   console.log(status.installed
-    ? `SonicBarn hook is installed for ${shellName} at ${status.profilePath}`
-    : `SonicBarn hook is not installed for ${shellName}. Use \`sonicbarn install-hook ${shellName}\`.`);
+    ? `soundfx hook is installed for ${shellName} at ${status.profilePath}`
+    : `soundfx hook is not installed for ${shellName}. Use \`soundfx install-hook ${shellName}\`.`);
   process.exit(0);
 }
 
@@ -67,7 +69,7 @@ if (command === 'uninstall-hook') {
 if (command === 'event-log') {
   if (args[1] === 'clear') {
     clearEventLog();
-    console.log('Cleared SonicBarn event log.');
+    console.log('Cleared soundfx event log.');
     process.exit(0);
   }
   console.log(readEventLog());
@@ -77,10 +79,34 @@ if (command === 'event-log') {
 if (command === 'playback-log') {
   if (args[1] === 'clear') {
     clearPlaybackLog();
-    console.log('Cleared SonicBarn playback log.');
+    console.log('Cleared soundfx playback log.');
     process.exit(0);
   }
   console.log(readPlaybackLog());
+  process.exit(0);
+}
+
+if (command === 'doctor') {
+  const shellName = args[1] || detectPreferredShell();
+  const report = getDoctorReport(shellName);
+  console.log(`
+soundfx doctor
+
+- Package: ${report.packageName}
+- Node: ${report.nodeVersion}
+- Platform: ${report.platform}
+- Shell: ${report.shell}
+- Hook installed: ${report.hookInstalled ? 'yes' : 'no'}
+- Shell profile: ${report.profilePath}
+- Config file: ${report.configPath}
+- Cache folder: ${report.cacheDir}
+- Default unknown-command sound: ${report.sampleSoundName} (${report.sampleSoundId})
+`);
+  if (!report.hookInstalled) {
+    console.log(`Next step: run \`soundfx install-hook ${report.shell}\``);
+  } else {
+    console.log(`Next step: run \`soundfx test-sound ${report.sampleSoundId}\` to confirm you can hear audio.`);
+  }
   process.exit(0);
 }
 
@@ -180,7 +206,7 @@ if (command === 'tui' || command === 'setup' || !command) {
   await runTui(args);
 }
 
-if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup'].includes(command)) {
+if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup'].includes(command)) {
   printUsage();
   process.exit(1);
 }

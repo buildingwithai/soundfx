@@ -17,6 +17,7 @@ This package does **not** include:
 
 ```bash
 soundfx tui
+soundfx doctor
 soundfx events
 soundfx sounds
 soundfx assign <eventId> <soundId>
@@ -26,6 +27,17 @@ soundfx install-hook <shell>
 soundfx uninstall-hook <shell>
 soundfx hook-status <shell>
 ```
+
+## Quick start
+
+```bash
+npm install -g soundfx
+soundfx doctor
+soundfx install-hook powershell
+soundfx tui
+```
+
+If you are on macOS or Linux, replace `powershell` with `zsh` or `bash`.
 
 ## Shells
 

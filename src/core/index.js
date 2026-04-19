@@ -118,6 +118,7 @@ soundfx CLI
 Usage:
   soundfx tui
   soundfx setup
+  soundfx doctor [shell]
   soundfx events
   soundfx sounds
   soundfx assign <eventId> <soundId>
@@ -171,48 +172,48 @@ export function isHookInstalled(shellName) {
     return { installed: false, profilePath };
   }
 
-  const markerStart = `# >>> SonicBarn ${shellName} hook >>>`;
+  const markerStart = `# >>> soundfx ${shellName} hook >>>`;
   const contents = fs.readFileSync(profilePath, 'utf-8');
   return { installed: contents.includes(markerStart), profilePath };
 }
 
 export function getHookSnippet(shellName, commandSpec = getHookCommandSpec()) {
-  const markerStart = `# >>> SonicBarn ${shellName} hook >>>`;
-  const markerEnd = `# <<< SonicBarn ${shellName} hook <<<`;
+  const markerStart = `# >>> soundfx ${shellName} hook >>>`;
+  const markerEnd = `# <<< soundfx ${shellName} hook <<<`;
   const bashCommand = `${shellQuote(commandSpec.executable)} ${shellQuote(commandSpec.scriptPath)}`;
   const powershellExecutable = powershellSingleQuote(commandSpec.executable);
   const powershellScript = powershellSingleQuote(commandSpec.scriptPath);
 
   if (shellName === 'bash') {
     return `${markerStart}
-__sonicbarn_last_command=""
+__soundfx_last_command=""
 
-__sonicbarn_preexec() {
-  __sonicbarn_last_command="$BASH_COMMAND"
-  case "$__sonicbarn_last_command" in
+__soundfx_preexec() {
+  __soundfx_last_command="$BASH_COMMAND"
+  case "$__soundfx_last_command" in
     sudo*) ${bashCommand} event sudo_used >/dev/null 2>&1 & ;;
   esac
 }
 
-trap '__sonicbarn_preexec' DEBUG
+trap '__soundfx_preexec' DEBUG
 
-__sonicbarn_precmd() {
+__soundfx_precmd() {
   local exit_code=$?
-  if [[ -n "$__sonicbarn_last_command" && "$__sonicbarn_last_command" != "${bashCommand} event "* ]]; then
+  if [[ -n "$__soundfx_last_command" && "$__soundfx_last_command" != "${bashCommand} event "* ]]; then
     if [[ $exit_code -eq 0 ]]; then
       ${bashCommand} event command_success >/dev/null 2>&1 &
     else
       ${bashCommand} event command_error >/dev/null 2>&1 &
     fi
 
-    case "$__sonicbarn_last_command" in
+    case "$__soundfx_last_command" in
       "git commit"*) ${bashCommand} event git_commit >/dev/null 2>&1 & ;;
       "npm install"*|"pnpm install"*|"yarn add"*) ${bashCommand} event npm_install >/dev/null 2>&1 & ;;
     esac
   fi
 }
 
-PROMPT_COMMAND="__sonicbarn_precmd"
+PROMPT_COMMAND="__soundfx_precmd"
 
 command_not_found_handle() {
   ${bashCommand} event unknown_command >/dev/null 2>&1 &
@@ -230,25 +231,25 @@ ${markerEnd}`;
 
   if (shellName === 'zsh') {
     return `${markerStart}
-typeset -g SONICBARN_LAST_COMMAND=""
+typeset -g SOUNDFX_LAST_COMMAND=""
 
-function sonicbarn_preexec() {
-  SONICBARN_LAST_COMMAND="$1"
-  case "$SONICBARN_LAST_COMMAND" in
+function soundfx_preexec() {
+  SOUNDFX_LAST_COMMAND="$1"
+  case "$SOUNDFX_LAST_COMMAND" in
     sudo*) ${bashCommand} event sudo_used >/dev/null 2>&1 & ;;
   esac
 }
 
-function sonicbarn_precmd() {
+function soundfx_precmd() {
   local exit_code=$?
-  if [[ -n "$SONICBARN_LAST_COMMAND" && "$SONICBARN_LAST_COMMAND" != "${bashCommand} event "* ]]; then
+  if [[ -n "$SOUNDFX_LAST_COMMAND" && "$SOUNDFX_LAST_COMMAND" != "${bashCommand} event "* ]]; then
     if [[ $exit_code -eq 0 ]]; then
       ${bashCommand} event command_success >/dev/null 2>&1 &
     else
       ${bashCommand} event command_error >/dev/null 2>&1 &
     fi
 
-    case "$SONICBARN_LAST_COMMAND" in
+    case "$SOUNDFX_LAST_COMMAND" in
       "git commit"*) ${bashCommand} event git_commit >/dev/null 2>&1 & ;;
       "npm install"*|"pnpm install"*|"yarn add"*) ${bashCommand} event npm_install >/dev/null 2>&1 & ;;
     esac
@@ -256,8 +257,8 @@ function sonicbarn_precmd() {
 }
 
 autoload -Uz add-zsh-hook
-add-zsh-hook preexec sonicbarn_preexec
-add-zsh-hook precmd sonicbarn_precmd
+add-zsh-hook preexec soundfx_preexec
+add-zsh-hook precmd soundfx_precmd
 
 command_not_found_handler() {
   ${bashCommand} event unknown_command >/dev/null 2>&1 &
@@ -269,11 +270,11 @@ ${markerEnd}`;
 
   if (shellName === 'powershell') {
     return `${markerStart}
-$global:SonicBarnLastHistoryId = -1
-$global:SonicBarnLastCommand = ""
-$global:SonicBarnLastErrorCount = $error.Count
+$global:SoundfxLastHistoryId = -1
+$global:SoundfxLastCommand = ""
+$global:SoundfxLastErrorCount = $error.Count
 
-function Invoke-SonicBarnEvent {
+function Invoke-SoundfxEvent {
   param([string]$EventName)
   try {
     Start-Process -FilePath ${powershellExecutable} -ArgumentList @(${powershellScript}, 'event', $EventName) -WindowStyle Hidden | Out-Null
@@ -284,21 +285,21 @@ function Invoke-SonicBarnEvent {
   }
 }
 
-$global:SonicBarnOriginalPrompt = $function:prompt
+$global:SoundfxOriginalPrompt = $function:prompt
 
 function prompt {
   $history = Get-History -Count 1 -ErrorAction SilentlyContinue
-  if ($history -and $history.Id -ne $global:SonicBarnLastHistoryId) {
-    $global:SonicBarnLastHistoryId = $history.Id
-    $global:SonicBarnLastCommand = $history.CommandLine
+  if ($history -and $history.Id -ne $global:SoundfxLastHistoryId) {
+    $global:SoundfxLastHistoryId = $history.Id
+    $global:SoundfxLastCommand = $history.CommandLine
 
-    if ($global:SonicBarnLastCommand -like 'sudo*') {
-      Invoke-SonicBarnEvent 'sudo_used'
+    if ($global:SoundfxLastCommand -like 'sudo*') {
+      Invoke-SoundfxEvent 'sudo_used'
     }
 
     $newErrorCount = $error.Count
     $latestError = if ($newErrorCount -gt 0) { $error[0] } else { $null }
-    $hasNewError = $newErrorCount -gt $global:SonicBarnLastErrorCount
+    $hasNewError = $newErrorCount -gt $global:SoundfxLastErrorCount
     $isUnknownCommand = $false
 
     if ($hasNewError -and $latestError -and (
@@ -309,26 +310,26 @@ function prompt {
     }
 
     if ($isUnknownCommand) {
-      Invoke-SonicBarnEvent 'unknown_command'
+      Invoke-SoundfxEvent 'unknown_command'
     } elseif ($hasNewError) {
-      Invoke-SonicBarnEvent 'command_error'
+      Invoke-SoundfxEvent 'command_error'
     } else {
-      Invoke-SonicBarnEvent 'command_success'
+      Invoke-SoundfxEvent 'command_success'
     }
 
-    $global:SonicBarnLastErrorCount = $newErrorCount
+    $global:SoundfxLastErrorCount = $newErrorCount
 
-    if ($global:SonicBarnLastCommand -like 'git commit*') {
-      Invoke-SonicBarnEvent 'git_commit'
+    if ($global:SoundfxLastCommand -like 'git commit*') {
+      Invoke-SoundfxEvent 'git_commit'
     }
 
-    if ($global:SonicBarnLastCommand -like 'npm install*' -or $global:SonicBarnLastCommand -like 'pnpm install*' -or $global:SonicBarnLastCommand -like 'yarn add*') {
-      Invoke-SonicBarnEvent 'npm_install'
+    if ($global:SoundfxLastCommand -like 'npm install*' -or $global:SoundfxLastCommand -like 'pnpm install*' -or $global:SoundfxLastCommand -like 'yarn add*') {
+      Invoke-SoundfxEvent 'npm_install'
     }
   }
 
-  if ($global:SonicBarnOriginalPrompt) {
-    & $global:SonicBarnOriginalPrompt
+  if ($global:SoundfxOriginalPrompt) {
+    & $global:SoundfxOriginalPrompt
   } else {
     "PS $($executionContext.SessionState.Path.CurrentLocation)> "
   }
@@ -347,21 +348,21 @@ export function installHookSnippet(shellName, commandSpec = getHookCommandSpec()
     return { ok: false, message: `Unsupported shell: ${shellName}` };
   }
 
-  const markerStart = `# >>> SonicBarn ${shellName} hook >>>`;
+  const markerStart = `# >>> soundfx ${shellName} hook >>>`;
   fs.mkdirSync(path.dirname(profilePath), { recursive: true });
 
   const existing = fs.existsSync(profilePath) ? fs.readFileSync(profilePath, 'utf-8') : '';
   if (existing.includes(markerStart)) {
-    const markerEnd = `# <<< SonicBarn ${shellName} hook <<<`;
+    const markerEnd = `# <<< soundfx ${shellName} hook <<<`;
     const blockPattern = new RegExp(`${markerStart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${markerEnd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`, 'm');
     const nextContents = existing.replace(blockPattern, snippet).replace(/\n{3,}/g, '\n\n');
     fs.writeFileSync(profilePath, nextContents.trimEnd() + '\n');
-    return { ok: true, message: `Updated SonicBarn hook in ${profilePath}`, profilePath };
+    return { ok: true, message: `Updated soundfx hook in ${profilePath}`, profilePath };
   }
 
   const prefix = existing && !existing.endsWith('\n') ? '\n\n' : '\n';
   fs.appendFileSync(profilePath, `${prefix}${snippet}\n`);
-  return { ok: true, message: `Installed SonicBarn hook into ${profilePath}`, profilePath };
+  return { ok: true, message: `Installed soundfx hook into ${profilePath}`, profilePath };
 }
 
 export function uninstallHookSnippet(shellName) {
@@ -370,18 +371,46 @@ export function uninstallHookSnippet(shellName) {
     return { ok: false, message: `No profile found for ${shellName}`, profilePath };
   }
 
-  const markerStart = `# >>> SonicBarn ${shellName} hook >>>`;
-  const markerEnd = `# <<< SonicBarn ${shellName} hook <<<`;
+  const markerStart = `# >>> soundfx ${shellName} hook >>>`;
+  const markerEnd = `# <<< soundfx ${shellName} hook <<<`;
   const contents = fs.readFileSync(profilePath, 'utf-8');
   const blockPattern = new RegExp(`${markerStart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${markerEnd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`, 'm');
 
   if (!blockPattern.test(contents)) {
-    return { ok: true, message: `SonicBarn hook was not installed in ${profilePath}`, profilePath };
+    return { ok: true, message: `soundfx hook was not installed in ${profilePath}`, profilePath };
   }
 
   const nextContents = contents.replace(blockPattern, '').replace(/\n{3,}/g, '\n\n');
   fs.writeFileSync(profilePath, nextContents.trimEnd() + '\n');
-  return { ok: true, message: `Removed SonicBarn hook from ${profilePath}`, profilePath };
+  return { ok: true, message: `Removed soundfx hook from ${profilePath}`, profilePath };
+}
+
+export function detectPreferredShell() {
+  if (process.platform === 'win32') return 'powershell';
+  const shellPath = process.env.SHELL || '';
+  if (shellPath.includes('zsh')) return 'zsh';
+  return 'bash';
+}
+
+export function getDoctorReport(shellName = detectPreferredShell()) {
+  const resolvedShell = getHookSnippet(shellName) ? shellName : detectPreferredShell();
+  const hookStatus = getHookSnippet(resolvedShell) ? isHookInstalled(resolvedShell) : { installed: false, profilePath: getShellProfilePath(resolvedShell) };
+  const sampleSound = getDefaultConfig().unknown_command;
+  const sample = findSound(sampleSound);
+
+  return {
+    packageName: 'soundfx',
+    version: process.env.npm_package_version || null,
+    nodeVersion: process.version,
+    platform: process.platform,
+    shell: resolvedShell,
+    profilePath: hookStatus.profilePath || 'not-found',
+    hookInstalled: hookStatus.installed,
+    configPath: CONFIG_PATH,
+    cacheDir: SOUNDS_CACHE_DIR,
+    sampleSoundId: sampleSound,
+    sampleSoundName: sample?.name || sampleSound
+  };
 }
 
 export function appendEventLog(eventId, soundId) {

@@ -15,7 +15,8 @@
   "scripts": {
     "test:tui": "node ./src/core/cli.js tui --test",
     "events": "node ./src/core/cli.js events",
-    "sounds": "node ./src/core/cli.js sounds"
+    "sounds": "node ./src/core/cli.js sounds",
+    "doctor": "node ./src/core/cli.js doctor"
   },
   "keywords": [
     "cli",
@@ -27,7 +28,7 @@
     "audio",
     "hooks"
   ],
-  "author": "SonicBarn",
+  "author": "buildingwithai",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -9,7 +9,7 @@ import {
   saveConfig
 } from './index.js';
 
-function SonicBarnTui({ args, interactive }) {
+function SoundfxTui({ args, interactive }) {
   const { exit } = useApp();
   const [config, setConfig] = useState(() => loadConfig());
   const [selectedEventIndex, setSelectedEventIndex] = useState(0);
@@ -192,7 +192,7 @@ function SonicBarnTui({ args, interactive }) {
         null,
         interactive
           ? 'Left/Right or E/S = switch panes, Up/Down = move, Enter = save, P or Space = preview, R = reset, Q = quit'
-          : 'Interactive keyboard input is not available in this shell. Run `sonicbarn tui` in a normal terminal window to use the live controls.'
+          : 'Interactive keyboard input is not available in this shell. Run `soundfx tui` in a normal terminal window to use the live controls.'
       )
     ),
     React.createElement(
@@ -205,7 +205,7 @@ function SonicBarnTui({ args, interactive }) {
 
 export async function runTui(args = []) {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  const instance = render(React.createElement(SonicBarnTui, { args, interactive }));
+  const instance = render(React.createElement(SoundfxTui, { args, interactive }));
   if (!interactive) {
     setTimeout(() => instance.unmount(), 800);
   }
