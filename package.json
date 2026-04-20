@@ -13,10 +13,12 @@
     "LICENSE"
   ],
   "scripts": {
+    "dev": "node ./website/server.js",
     "test:tui": "node ./src/core/cli.js tui --test",
     "events": "node ./src/core/cli.js events",
     "sounds": "node ./src/core/cli.js sounds",
-    "doctor": "node ./src/core/cli.js doctor"
+    "doctor": "node ./src/core/cli.js doctor",
+    "website": "node ./website/server.js"
   },
   "keywords": [
     "cli",

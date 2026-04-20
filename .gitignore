@@ -3,3 +3,15 @@ npm-debug.log*
 .DS_Store
 dist/
 *.tgz
+cloned-design/
+cursor-dark/
+cursor-platforms/
+cursor-refresh/
+cursor/
+design-brands-output/
+design-diff-output/
+design-extract-output/
+designlang-export-cursor.csv
+designlang-export-cursor.json
+spotify/
+starbucks/

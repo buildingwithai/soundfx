@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>soundfx | Terminal sound effects for developers</title>
+  <meta
+    name="description"
+    content="soundfx adds playable sound effects to your terminal workflow. Hook command success, command failure, and command not found events to a curated meme-ready sound library."
+  />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:wght@500;600&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="#top">
+        <span class="brand-mark"></span>
+        <span class="brand-text">soundfx</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features">What it does</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="nav-icon-link" href="https://github.com/buildingwithai/soundfx" target="_blank" rel="noreferrer" aria-label="Open the soundfx GitHub repository">
+          <span class="github-mark" aria-hidden="true">
+            <span class="github-head"></span>
+            <span class="github-ear github-ear-left"></span>
+            <span class="github-ear github-ear-right"></span>
+          </span>
+        </a>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">terminal sound effects for real workflows</p>
+          <h1>Make your terminal sound alive.</h1>
+          <p class="hero-text">
+            <strong>soundfx</strong> lets you map sound effects to terminal events.
+            Install it, run <code>soundfx</code>, and assign sounds to the moments you care about.
+          </p>
+
+          <div class="install-command-bar" aria-label="Install soundfx">
+            <code id="install-command">npm install -g @buildingwithai/soundfx</code>
+            <button id="copy-button" type="button">Copy</button>
+          </div>
+
+          <div class="hero-meta">
+            <span class="hero-meta-pill">PowerShell, bash, zsh</span>
+            <span class="hero-meta-pill">109 built-in sounds</span>
+            <span class="hero-meta-pill">One command to start</span>
+          </div>
+        </div>
+
+        <div class="hero-demo-shell">
+          <div class="demo-window">
+            <div class="demo-window-bar">
+              <div class="demo-window-dots">
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+              </div>
+              <span class="demo-window-title">soundfx terminal demo</span>
+              <button id="demo-sound-toggle" class="demo-sound-toggle is-awaiting-click" type="button" aria-pressed="false" aria-label="Enable demo sound">
+                <span id="demo-sound-icon" aria-hidden="true">Play sound</span>
+              </button>
+            </div>
+
+            <section id="terminal-shell" class="terminal-panel" aria-label="Interactive terminal demo">
+              <div id="terminal-transcript" class="terminal-transcript" aria-live="polite"></div>
+            </section>
+          </div>
+
+          <div class="demo-helper">
+            <span>Try <code>dir</code> to hear the success sound, or type any wrong command to hear the error sound.</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="content-section story-section">
+        <div class="story-band">
+          <div class="story-copy">
+            <p class="eyebrow">what it does</p>
+            <h2>Make wrong commands, failures, and wins feel immediate.</h2>
+            <p>
+              soundfx listens for real terminal moments and lets you decide what each one should sound like. It turns a
+              plain shell into something with feedback, personality, and rhythm.
+            </p>
+            <a class="story-link" href="#how-it-works">See how it works &rarr;</a>
+          </div>
+          <div class="story-visual">
+            <div class="visual-stack visual-stack-terminal">
+              <div class="visual-grain"></div>
+              <div class="visual-ambient visual-ambient-terminal"></div>
+              <div class="visual-grid-lines"></div>
+              <div class="visual-panel">
+                <div class="visual-panel-bar"></div>
+                <div class="visual-code">
+                  <span>unknown_command -> drake_embarrassing</span>
+                  <span>command_error -> access_denied</span>
+                  <span>command_success -> ws_in_the_chat</span>
+                  <span>run_all_actions -> mission_failed</span>
+                </div>
+              </div>
+              <div class="visual-mini-panel">
+                <span class="mini-panel-label">Preview</span>
+                <span class="mini-panel-line">soundfx test unknown_command</span>
+                <span class="mini-panel-line mini-panel-line-accent">DRAKE: &quot;EMBARRASSING&quot;</span>
+              </div>
+              <div class="visual-chip-cluster">
+                <span class="visual-chip">PowerShell</span>
+                <span class="visual-chip">bash</span>
+                <span class="visual-chip">zsh</span>
+              </div>
+              <div class="visual-floating-card">
+                <strong>Live result</strong>
+                <span>Type a wrong command and Drake says &quot;embarrassing&quot; right when the shell throws the error.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-band story-band-reverse">
+          <div class="story-copy">
+            <p class="eyebrow">real shell workflow</p>
+            <h2>Built around actual command-line behavior, not a staged fake product flow.</h2>
+            <p>
+              The point is simple: stay in your terminal, trigger real shell events, and keep changing the behavior until
+              it feels right for the way you work.
+            </p>
+            <a class="story-link" href="#faq">See the practical questions &rarr;</a>
+          </div>
+          <div class="story-visual">
+            <div class="visual-stack visual-stack-shells">
+              <div class="visual-grain"></div>
+              <div class="visual-ambient visual-ambient-shell"></div>
+              <div class="visual-grid-lines visual-grid-lines-soft"></div>
+              <div class="shell-card shell-card-tall">
+                <span class="shell-name">soundfx list</span>
+                <div class="shell-code-block">
+                  <span>unknown_command -> drake_embarrassing</span>
+                  <span>command_error -> access_denied</span>
+                  <span>command_success -> ws_in_the_chat</span>
+                </div>
+              </div>
+              <div class="shell-card shell-card-accent">
+                <span class="shell-name">One command, then tune it.</span>
+                <span class="shell-status">terminal-first</span>
+              </div>
+              <div class="shell-sticker">
+                <span>meme-ready</span>
+              </div>
+              <div class="shell-float-note">
+                <strong>No separate dashboard</strong>
+                <span>The terminal itself is where setup, testing, and feedback all happen.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section micro-proof-section">
+        <div class="micro-proof-grid">
+          <article class="micro-proof-card">
+            <span class="micro-proof-label">Unknown commands</span>
+            <p>Catch the "term is not recognized" moment and attach a sound to it.</p>
+          </article>
+          <article class="micro-proof-card">
+            <span class="micro-proof-label">Command failure</span>
+            <p>Map a different reaction for commands that run but still fail.</p>
+          </article>
+          <article class="micro-proof-card">
+            <span class="micro-proof-label">Command success</span>
+            <p>Add a lighter confirmation sound when things complete the way you wanted.</p>
+          </article>
+          <article class="micro-proof-card">
+            <span class="micro-proof-label">Run all actions</span>
+            <p>Bundle a bigger reaction when you want one command to trigger everything at once.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="content-section workflow-section">
+        <div class="workflow-heading">
+          <p class="eyebrow">how it works</p>
+          <h2>Install it once. Run <code>soundfx</code>. Start assigning reactions.</h2>
+        </div>
+
+        <div class="workflow-grid">
+          <article class="workflow-card workflow-card-wide">
+            <p class="feature-kicker">Step 1</p>
+            <h3>Install the command globally</h3>
+            <p>The package installs once with npm so the <code>soundfx</code> command is available from your normal shell.</p>
+            <code class="inline-command">npm install -g @buildingwithai/soundfx</code>
+          </article>
+
+          <article class="workflow-card">
+            <p class="feature-kicker">Step 2</p>
+            <h3>Run <code>soundfx</code></h3>
+            <p>Open the CLI from the terminal itself. No extra dashboard required.</p>
+          </article>
+
+          <article class="workflow-card">
+            <p class="feature-kicker">Step 3</p>
+            <h3>Assign sounds to events</h3>
+            <p>Map an event, test it, and keep adjusting until the shell feels right.</p>
+          </article>
+
+          <article class="workflow-card">
+            <p class="feature-kicker">Built-in commands</p>
+            <ul class="workflow-list">
+              <li><code>soundfx list</code></li>
+              <li><code>soundfx sounds</code></li>
+              <li><code>soundfx assign &lt;event&gt; &lt;sound&gt;</code></li>
+              <li><code>soundfx test unknown_command</code></li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="faq" class="content-section faq-section">
+        <div class="faq-heading">
+          <p class="eyebrow">faq</p>
+          <h2>Quick answers for the practical questions people ask before they install.</h2>
+        </div>
+
+        <div class="faq-grid faq-grid-dense">
+          <article class="faq-card">
+            <h3>Is this a desktop app?</h3>
+            <p>No. This package is the terminal product by itself. It installs as a CLI tool.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Can I hear a preview before I save?</h3>
+            <p>Yes. You can test a mapped event and hear the result right away.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Does it work only in one shell?</h3>
+            <p>No. It can work anywhere the same shell profile is loaded.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Can I change the sound later?</h3>
+            <p>Yes. Reassign the event whenever you want and keep tuning the experience.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Do I need the desktop app?</h3>
+            <p>No. The CLI tool stands on its own for terminal use.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Can I use my own sounds?</h3>
+            <p>Yes. The terminal flow is designed around swapping and testing mappings.</p>
+          </article>
+        </div>
+        <div class="faq-summary-band">
+          <div>
+            <span class="faq-summary-label">Simple version</span>
+            <p>Install the package, run <code>soundfx</code>, assign sounds to events, and keep refining the shell until it feels like yours.</p>
+          </div>
+        </div>
+        <div class="faq-inline-links">
+          <a href="https://github.com/buildingwithai/soundfx" target="_blank" rel="noreferrer">View the repo</a>
+        </div>
+      </section>
+
+      <section class="content-section final-cta">
+        <div class="final-cta-card">
+          <div class="final-cta-copy-block">
+            <p class="eyebrow">try soundfx now</p>
+            <h2>Copy the command and make your shell less boring.</h2>
+            <p class="final-cta-copy">Install it globally, open the command, and start turning shell events into reactions you can actually hear.</p>
+          </div>
+          <div class="install-command-bar final-install-bar" aria-label="Install soundfx again">
+            <code>npm install -g @buildingwithai/soundfx</code>
+            <button class="secondary-copy-button" type="button" data-copy="npm install -g @buildingwithai/soundfx">Copy</button>
+          </div>
+        </div>
+      </section>
+
+      <footer class="site-footer">
+        <div class="footer-brand-row">
+          <a class="brand footer-brand" href="#top">
+            <span class="brand-mark"></span>
+            <span class="brand-text">soundfx</span>
+          </a>
+          <p class="footer-note">Terminal sound effects for developers who want their shell to feel alive.</p>
+        </div>
+        <div class="footer-grid">
+          <div>
+            <h3>Product</h3>
+            <a href="#features">What it does</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#faq">FAQ</a>
+          </div>
+          <div>
+            <h3>Project</h3>
+            <a href="https://github.com/buildingwithai/soundfx" target="_blank" rel="noreferrer">GitHub</a>
+          </div>
+          <div>
+            <h3>Use cases</h3>
+            <span>Unknown commands</span>
+            <span>Command failure</span>
+            <span>Command success</span>
+          </div>
+          <div>
+            <h3>Shells</h3>
+            <span>PowerShell</span>
+            <span>bash</span>
+            <span>zsh</span>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
