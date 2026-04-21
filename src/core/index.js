@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url';
 import ffmpegPath from 'ffmpeg-static';
 import { DEFAULT_SOUNDS } from '../../shared/default-sounds.js';
 import { playWindowsSoundFile, playWindowsWavFile } from '../platform/windows/audio.js';
-import { playMacSoundFile } from '../platform/macos/audio.js';
 import { playLinuxSoundFile } from '../platform/linux/audio.js';
 
 export const CONFIG_PATH = path.join(os.homedir(), '.soundfx-cli.json');
@@ -18,6 +17,8 @@ export const EVENT_LOG_PATH = path.join(os.homedir(), '.soundfx-events.log');
 export const LEGACY_EVENT_LOG_PATH = path.join(os.homedir(), '.sonicbarn-events.log');
 export const PLAYBACK_LOG_PATH = path.join(os.homedir(), '.soundfx-playback.log');
 export const LEGACY_PLAYBACK_LOG_PATH = path.join(os.homedir(), '.sonicbarn-playback.log');
+export const EVENT_PLAYBACK_STATE_PATH = path.join(os.homedir(), '.soundfx-current-playback.json');
+export const EVENT_GUARD_STATE_PATH = path.join(os.homedir(), '.soundfx-event-guard.json');
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_ENTRY_PATH = path.join(MODULE_DIR, 'cli.js');
 let currentPreviewProcess = null;
@@ -42,6 +43,11 @@ export const SOUND_LIBRARY = [
 }))
 ];
 
+export const DEFAULT_CONFIG_META = {
+  favoriteSoundIds: [],
+  recentSoundIds: []
+};
+
 const LEGACY_SOUND_ID_MAP = {
   error: 'default-16',
   vine_boom: 'default-9',
@@ -61,7 +67,8 @@ export function getDefaultConfig() {
     command_interrupted: 'none',
     sudo_used: 'default-16',
     git_commit: 'default-3',
-    npm_install: 'default-1'
+    npm_install: 'default-1',
+    __meta: { ...DEFAULT_CONFIG_META }
   };
 }
 
@@ -73,10 +80,23 @@ function readJsonFile(filePath) {
 export function loadConfig() {
   const savedConfig = readJsonFile(CONFIG_PATH) || readJsonFile(LEGACY_CONFIG_PATH);
   if (savedConfig) {
-    const migratedConfig = Object.fromEntries(
-      Object.entries(savedConfig).map(([eventId, soundId]) => [eventId, LEGACY_SOUND_ID_MAP[soundId] || soundId])
-    );
-    return { ...getDefaultConfig(), ...migratedConfig };
+    const defaultConfig = getDefaultConfig();
+    const migratedConfig = { ...defaultConfig };
+    for (const [key, value] of Object.entries(savedConfig)) {
+      if (key === '__meta' && value && typeof value === 'object') {
+        migratedConfig.__meta = {
+          ...DEFAULT_CONFIG_META,
+          ...value
+        };
+        continue;
+      }
+      migratedConfig[key] = LEGACY_SOUND_ID_MAP[value] || value;
+    }
+    migratedConfig.__meta = {
+      ...DEFAULT_CONFIG_META,
+      ...(migratedConfig.__meta || {})
+    };
+    return migratedConfig;
   }
   return getDefaultConfig();
 }
@@ -175,6 +195,10 @@ function shellQuote(value) {
   return `"${value.replace(/(["\\$`])/g, '\\$1')}"`;
 }
 
+function shellSingleQuote(value) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 function powershellSingleQuote(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -194,6 +218,8 @@ export function getHookSnippet(shellName, commandSpec = getHookCommandSpec()) {
   const markerStart = `# >>> soundfx ${shellName} hook >>>`;
   const markerEnd = `# <<< soundfx ${shellName} hook <<<`;
   const bashCommand = `${shellQuote(commandSpec.executable)} ${shellQuote(commandSpec.scriptPath)}`;
+  const bashCommandPrefix = `${commandSpec.executable} ${commandSpec.scriptPath} event `;
+  const bashCommandPrefixPattern = `${shellSingleQuote(bashCommandPrefix)}*`;
   const powershellExecutable = powershellSingleQuote(commandSpec.executable);
   const powershellScript = powershellSingleQuote(commandSpec.scriptPath);
 
@@ -202,11 +228,16 @@ export function getHookSnippet(shellName, commandSpec = getHookCommandSpec()) {
 __soundfx_last_command=""
 __soundfx_unknown_command_fired=0
 
+__soundfx_emit_async() {
+  command nohup ${bashCommand} event "$1" >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+}
+
 __soundfx_preexec() {
   __soundfx_last_command="$BASH_COMMAND"
   __soundfx_unknown_command_fired=0
   case "$__soundfx_last_command" in
-    sudo*) ${bashCommand} event sudo_used >/dev/null 2>&1 & ;;
+    sudo*) __soundfx_emit_async sudo_used ;;
   esac
 }
 
@@ -214,20 +245,22 @@ trap '__soundfx_preexec' DEBUG
 
 __soundfx_precmd() {
   local exit_code=$?
-  if [[ -n "$__soundfx_last_command" && "$__soundfx_last_command" != "${bashCommand} event "* ]]; then
+  if [[ -n "$__soundfx_last_command" && "$__soundfx_last_command" != ${bashCommandPrefixPattern} ]]; then
+    local handled_command="$__soundfx_last_command"
+    __soundfx_last_command=""
     if [[ $__soundfx_unknown_command_fired -eq 1 ]]; then
       __soundfx_unknown_command_fired=0
     elif [[ $exit_code -eq 130 ]]; then
-      ${bashCommand} event command_interrupted >/dev/null 2>&1 &
+      __soundfx_emit_async command_interrupted
     elif [[ $exit_code -eq 0 ]]; then
-      ${bashCommand} event command_success >/dev/null 2>&1 &
+      __soundfx_emit_async command_success
     else
-      ${bashCommand} event command_error >/dev/null 2>&1 &
+      __soundfx_emit_async command_error
     fi
 
-    case "$__soundfx_last_command" in
-      "git commit"*) ${bashCommand} event git_commit >/dev/null 2>&1 & ;;
-      "npm install"*|"pnpm install"*|"yarn add"*) ${bashCommand} event npm_install >/dev/null 2>&1 & ;;
+    case "$handled_command" in
+      "git commit"*) __soundfx_emit_async git_commit ;;
+      "npm install"*|"pnpm install"*|"yarn add"*) __soundfx_emit_async npm_install ;;
     esac
   fi
 }
@@ -236,14 +269,14 @@ PROMPT_COMMAND="__soundfx_precmd"
 
 command_not_found_handle() {
   __soundfx_unknown_command_fired=1
-  ${bashCommand} event unknown_command >/dev/null 2>&1 &
+  __soundfx_emit_async unknown_command
   echo "command not found: $1"
   return 127
 }
 
 command_not_found_handler() {
   __soundfx_unknown_command_fired=1
-  ${bashCommand} event unknown_command >/dev/null 2>&1 &
+  __soundfx_emit_async unknown_command
   echo "command not found: $1"
   return 127
 }
@@ -255,41 +288,49 @@ ${markerEnd}`;
 typeset -g SOUNDFX_LAST_COMMAND=""
 typeset -g SOUNDFX_UNKNOWN_COMMAND_FIRED=0
 
+function soundfx_emit_async() {
+  (${bashCommand} event "$1" >/dev/null 2>&1) &!
+}
+
 function soundfx_preexec() {
   SOUNDFX_LAST_COMMAND="$1"
   SOUNDFX_UNKNOWN_COMMAND_FIRED=0
   case "$SOUNDFX_LAST_COMMAND" in
-    sudo*) ${bashCommand} event sudo_used >/dev/null 2>&1 & ;;
+    sudo*) soundfx_emit_async sudo_used ;;
   esac
 }
 
 function soundfx_precmd() {
   local exit_code=$?
-  if [[ -n "$SOUNDFX_LAST_COMMAND" && "$SOUNDFX_LAST_COMMAND" != "${bashCommand} event "* ]]; then
+  if [[ -n "$SOUNDFX_LAST_COMMAND" && "$SOUNDFX_LAST_COMMAND" != ${bashCommandPrefixPattern} ]]; then
+    local handled_command="$SOUNDFX_LAST_COMMAND"
+    SOUNDFX_LAST_COMMAND=""
     if [[ $SOUNDFX_UNKNOWN_COMMAND_FIRED -eq 1 ]]; then
       SOUNDFX_UNKNOWN_COMMAND_FIRED=0
     elif [[ $exit_code -eq 130 ]]; then
-      ${bashCommand} event command_interrupted >/dev/null 2>&1 &
+      soundfx_emit_async command_interrupted
     elif [[ $exit_code -eq 0 ]]; then
-      ${bashCommand} event command_success >/dev/null 2>&1 &
+      soundfx_emit_async command_success
     else
-      ${bashCommand} event command_error >/dev/null 2>&1 &
+      soundfx_emit_async command_error
     fi
 
-    case "$SOUNDFX_LAST_COMMAND" in
-      "git commit"*) ${bashCommand} event git_commit >/dev/null 2>&1 & ;;
-      "npm install"*|"pnpm install"*|"yarn add"*) ${bashCommand} event npm_install >/dev/null 2>&1 & ;;
+    case "$handled_command" in
+      "git commit"*) soundfx_emit_async git_commit ;;
+      "npm install"*|"pnpm install"*|"yarn add"*) soundfx_emit_async npm_install ;;
     esac
   fi
 }
 
 autoload -Uz add-zsh-hook
+add-zsh-hook -D preexec soundfx_preexec 2>/dev/null || true
+add-zsh-hook -D precmd soundfx_precmd 2>/dev/null || true
 add-zsh-hook preexec soundfx_preexec
 add-zsh-hook precmd soundfx_precmd
 
 command_not_found_handler() {
   SOUNDFX_UNKNOWN_COMMAND_FIRED=1
-  ${bashCommand} event unknown_command >/dev/null 2>&1 &
+  soundfx_emit_async unknown_command
   echo "command not found: $1"
   return 127
 }
@@ -329,6 +370,7 @@ function prompt {
     $latestError = if ($newErrorCount -gt 0) { $error[0] } else { $null }
     $hasNewError = $newErrorCount -gt $global:SoundfxLastErrorCount
     $isUnknownCommand = $false
+    $isInterrupted = $false
 
     if ($hasNewError -and $latestError -and (
       "$($latestError.FullyQualifiedErrorId)" -like '*CommandNotFoundException*' -or
@@ -337,8 +379,18 @@ function prompt {
       $isUnknownCommand = $true
     }
 
+    if ($hasNewError -and $latestError -and (
+      "$($latestError.FullyQualifiedErrorId)" -like '*PipelineStoppedException*' -or
+      "$($latestError.CategoryInfo.Reason)" -eq 'PipelineStoppedException' -or
+      "$($latestError.Exception.GetType().FullName)" -like '*PipelineStoppedException*'
+    )) {
+      $isInterrupted = $true
+    }
+
     if ($isUnknownCommand) {
       Invoke-SoundfxEvent 'unknown_command'
+    } elseif ($isInterrupted) {
+      Invoke-SoundfxEvent 'command_interrupted'
     } elseif ($hasNewError) {
       Invoke-SoundfxEvent 'command_error'
     } else {
@@ -649,6 +701,70 @@ function appendPlaybackLog(message) {
   fs.appendFileSync(PLAYBACK_LOG_PATH, line);
 }
 
+function readEventPlaybackState() {
+  if (!fs.existsSync(EVENT_PLAYBACK_STATE_PATH)) return null;
+
+  try {
+    return JSON.parse(fs.readFileSync(EVENT_PLAYBACK_STATE_PATH, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeEventPlaybackState(state) {
+  fs.writeFileSync(EVENT_PLAYBACK_STATE_PATH, JSON.stringify(state, null, 2));
+}
+
+function clearEventPlaybackState() {
+  try {
+    fs.unlinkSync(EVENT_PLAYBACK_STATE_PATH);
+  } catch {}
+}
+
+function readEventGuardState() {
+  if (!fs.existsSync(EVENT_GUARD_STATE_PATH)) return null;
+
+  try {
+    return JSON.parse(fs.readFileSync(EVENT_GUARD_STATE_PATH, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeEventGuardState(state) {
+  fs.writeFileSync(EVENT_GUARD_STATE_PATH, JSON.stringify(state, null, 2));
+}
+
+export function shouldSuppressEvent(eventId) {
+  const state = readEventGuardState();
+  const now = Date.now();
+
+  if (state?.eventId === 'unknown_command' && eventId === 'command_error' && now - state.at < 1500) {
+    appendPlaybackLog(`suppressed event=${eventId} because recent_event=unknown_command`);
+    return true;
+  }
+
+  if (state?.eventId === 'command_interrupted' && eventId === 'command_success' && now - state.at < 1500) {
+    appendPlaybackLog(`suppressed event=${eventId} because recent_event=command_interrupted`);
+    return true;
+  }
+
+  writeEventGuardState({ eventId, at: now });
+  return false;
+}
+
+function stopActiveEventPlayback() {
+  const state = readEventPlaybackState();
+  if (!state?.pid) return;
+
+  try {
+    process.kill(state.pid, 'SIGTERM');
+    appendPlaybackLog(`stopped-active-event-playback pid=${state.pid} backend=${state.backend || 'unknown'}`);
+  } catch {}
+
+  clearEventPlaybackState();
+}
+
 function getCachedSoundPath(url) {
   const parsedUrl = new URL(url);
   const extension = path.extname(parsedUrl.pathname) || '.bin';
@@ -771,6 +887,8 @@ export async function playSound(soundId) {
   if (!sound) return;
   if (!sound.url) return;
 
+  stopActiveEventPlayback();
+
   if (os.platform() === 'win32') {
     const cacheFile = await ensureCachedSoundFile(sound.url);
     if (!cacheFile) {
@@ -794,10 +912,26 @@ export async function playSound(soundId) {
   if (os.platform() === 'darwin') {
     const cacheFile = await ensureCachedSoundFile(sound.url);
     if (!cacheFile) return;
-    const result = playMacSoundFile(cacheFile);
-    appendPlaybackLog(result.ok
-      ? `backend=macos-afplay file=${cacheFile}`
-      : `backend=macos-afplay-failed file=${cacheFile} code=${result.code ?? 'null'} stderr=${result.stderr}`);
+    try {
+      const child = spawn('afplay', [cacheFile], { stdio: 'ignore' });
+      writeEventPlaybackState({
+        pid: child.pid,
+        backend: 'macos-afplay',
+        soundId,
+        file: cacheFile,
+        startedAt: new Date().toISOString()
+      });
+      child.on('exit', () => {
+        const state = readEventPlaybackState();
+        if (state?.pid === child.pid) {
+          clearEventPlaybackState();
+        }
+      });
+      child.unref();
+      appendPlaybackLog(`backend=macos-afplay file=${cacheFile} pid=${child.pid}`);
+    } catch (error) {
+      appendPlaybackLog(`backend=macos-afplay-failed file=${cacheFile} code=null stderr=${error instanceof Error ? error.message : String(error)}`);
+    }
     return;
   }
 

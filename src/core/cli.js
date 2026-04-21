@@ -24,12 +24,17 @@ import {
   runSetup,
   runUninstall,
   saveConfig,
+  shouldSuppressEvent,
   uninstallHookSnippet
 } from './index.js';
 import { runTui } from './tui.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 if (command === 'hook') {
   const shellName = args[1] || 'bash';
@@ -100,6 +105,13 @@ if (command === 'doctor') {
 if (command === 'play' || command === 'event') {
   const eventId = args[1] || 'unknown_command';
   (async () => {
+    if (eventId === 'command_error' || eventId === 'command_success') {
+      await sleep(120);
+    }
+    if (shouldSuppressEvent(eventId)) {
+      setTimeout(() => process.exit(0), 50);
+      return;
+    }
     const config = await loadConfigWithSync();
     const soundId = config[eventId];
     appendEventLog(eventId, soundId);

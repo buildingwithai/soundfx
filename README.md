@@ -48,6 +48,14 @@ soundfx test-sound default-1
 
 Behind the scenes, soundfx still needs one small shell hook so it knows when commands succeed, fail, or are unknown. On first launch, the app installs that hook for you automatically.
 
+Inside the TUI:
+
+- type to filter sounds with smart search
+- press `Ctrl+F` to add or remove a favorite
+- recently previewed or assigned sounds float toward the top
+- press `Esc` to clear the current filter
+- press `Space` to play or stop the selected preview
+
 ## Uninstall
 
 If you want to stop soundfx from hooking into your terminal:
