@@ -5,8 +5,10 @@ import {
   clearEventLog,
   clearPlaybackLog,
   detectPreferredShell,
+  ensureSetupForLaunch,
   findEvent,
   findSound,
+  formatDoctorReport,
   getDoctorReport,
   getHookSnippet,
   installHookSnippet,
@@ -19,6 +21,7 @@ import {
   printUsage,
   readEventLog,
   readPlaybackLog,
+  runSetup,
   saveConfig,
   uninstallHookSnippet
 } from './index.js';
@@ -89,24 +92,7 @@ if (command === 'playback-log') {
 if (command === 'doctor') {
   const shellName = args[1] || detectPreferredShell();
   const report = getDoctorReport(shellName);
-  console.log(`
-soundfx doctor
-
-- Package: ${report.packageName}
-- Node: ${report.nodeVersion}
-- Platform: ${report.platform}
-- Shell: ${report.shell}
-- Hook installed: ${report.hookInstalled ? 'yes' : 'no'}
-- Shell profile: ${report.profilePath}
-- Config file: ${report.configPath}
-- Cache folder: ${report.cacheDir}
-- Default unknown-command sound: ${report.sampleSoundName} (${report.sampleSoundId})
-`);
-  if (!report.hookInstalled) {
-    console.log(`Next step: run \`soundfx install-hook ${report.shell}\``);
-  } else {
-    console.log(`Next step: run \`soundfx test-sound ${report.sampleSoundId}\` to confirm you can hear audio.`);
-  }
+  console.log(formatDoctorReport(report));
   process.exit(0);
 }
 
@@ -202,8 +188,16 @@ if (command === 'test-sound') {
   })();
 }
 
-if (command === 'tui' || command === 'setup' || !command) {
-  await runTui(args);
+if (command === 'setup') {
+  const shellName = args[1] || detectPreferredShell();
+  const result = await runSetup(shellName);
+  console.log(result.message);
+  process.exit(result.ok ? 0 : 1);
+}
+
+if (command === 'tui' || !command) {
+  const launchContext = ensureSetupForLaunch(detectPreferredShell());
+  await runTui(args, launchContext);
 }
 
 if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup'].includes(command)) {

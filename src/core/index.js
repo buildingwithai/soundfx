@@ -117,7 +117,7 @@ soundfx CLI
 
 Usage:
   soundfx tui
-  soundfx setup
+  soundfx setup [shell]
   soundfx doctor [shell]
   soundfx events
   soundfx sounds
@@ -133,6 +133,11 @@ Usage:
   soundfx playback-log [clear]
   Note: powershell = Windows PowerShell, pwsh = PowerShell 7+
 `);
+}
+
+function commandExists(command) {
+  const result = spawnSync('which', [command], { stdio: 'pipe', encoding: 'utf8' });
+  return result.status === 0;
 }
 
 export function getShellProfilePath(shellName) {
@@ -397,6 +402,8 @@ export function getDoctorReport(shellName = detectPreferredShell()) {
   const hookStatus = getHookSnippet(resolvedShell) ? isHookInstalled(resolvedShell) : { installed: false, profilePath: getShellProfilePath(resolvedShell) };
   const sampleSound = getDefaultConfig().unknown_command;
   const sample = findSound(sampleSound);
+  const audioBackend = getAudioBackendStatus();
+  const shellReloadNeeded = hookStatus.installed;
 
   return {
     packageName: 'soundfx',
@@ -409,7 +416,165 @@ export function getDoctorReport(shellName = detectPreferredShell()) {
     configPath: CONFIG_PATH,
     cacheDir: SOUNDS_CACHE_DIR,
     sampleSoundId: sampleSound,
-    sampleSoundName: sample?.name || sampleSound
+    sampleSoundName: sample?.name || sampleSound,
+    audioBackend,
+    shellReloadNeeded,
+    nextSteps: getDoctorNextSteps({
+      shell: resolvedShell,
+      hookInstalled: hookStatus.installed,
+      audioBackend
+    })
+  };
+}
+
+export function getAudioBackendStatus() {
+  if (os.platform() === 'darwin') {
+    return {
+      platformLabel: 'macOS',
+      backendName: 'afplay',
+      available: commandExists('afplay'),
+      permissionsNote: 'No special macOS permission should be required for normal speaker playback.',
+      fallbackTestCommand: 'afplay /System/Library/Sounds/Glass.aiff'
+    };
+  }
+
+  if (os.platform() === 'win32') {
+    return {
+      platformLabel: 'Windows',
+      backendName: 'PowerShell media playback',
+      available: true,
+      permissionsNote: 'No extra permission is normally required.',
+      fallbackTestCommand: null
+    };
+  }
+
+  return {
+    platformLabel: 'Linux',
+    backendName: 'ffplay, paplay, aplay, or play',
+    available: true,
+    permissionsNote: 'No extra permission is normally required, but one supported audio player must exist.',
+    fallbackTestCommand: null
+  };
+}
+
+export function getDoctorNextSteps({ shell, hookInstalled, audioBackend }) {
+  const steps = [];
+
+  if (!audioBackend.available) {
+    steps.push(`Install or restore the ${audioBackend.backendName} audio backend for ${audioBackend.platformLabel}.`);
+    return steps;
+  }
+
+  if (!hookInstalled) {
+    steps.push(`Run \`soundfx install-hook ${shell}\`.`);
+    steps.push(`Open a new terminal window or run \`exec ${shell}\` so the hook is loaded.`);
+    steps.push('Run `soundfx test-sound default-16` to confirm you can hear audio.');
+    return steps;
+  }
+
+  steps.push('Run `soundfx test-sound default-16` to confirm you can hear audio.');
+  steps.push(`Open a new terminal window or run \`exec ${shell}\` before testing command-triggered sounds.`);
+  if (audioBackend.fallbackTestCommand) {
+    steps.push(`If that still fails, test your system audio directly with \`${audioBackend.fallbackTestCommand}\`.`);
+  }
+  return steps;
+}
+
+export function formatDoctorReport(report) {
+  const nextStepsText = report.nextSteps.map((step) => `- ${step}`).join('\n');
+  const audioBackendLabel = report.audioBackend.available
+    ? `${report.audioBackend.backendName} (ready)`
+    : `${report.audioBackend.backendName} (missing)`;
+
+  return `
+soundfx doctor
+
+- Package: ${report.packageName}
+- Node: ${report.nodeVersion}
+- Platform: ${report.platform}
+- Shell: ${report.shell}
+- Hook installed: ${report.hookInstalled ? 'yes' : 'no'}
+- Shell profile: ${report.profilePath}
+- Config file: ${report.configPath}
+- Cache folder: ${report.cacheDir}
+- Audio backend: ${audioBackendLabel}
+- Default unknown-command sound: ${report.sampleSoundName} (${report.sampleSoundId})
+
+${report.audioBackend.permissionsNote}
+
+Next steps:
+${nextStepsText}
+`;
+}
+
+export async function runSetup(shellName = detectPreferredShell()) {
+  const resolvedShell = getHookSnippet(shellName) ? shellName : detectPreferredShell();
+  const installResult = installHookSnippet(resolvedShell);
+  const report = getDoctorReport(resolvedShell);
+  const lines = [
+    'soundfx setup',
+    '',
+    installResult.message,
+    '',
+    'What this means:',
+    `- soundfx is now connected to your ${resolvedShell} shell profile.`,
+    `- You still need to open a new terminal window or run \`exec ${resolvedShell}\` before command sounds can trigger.`,
+    `- No special macOS security permission should be needed for normal speaker playback.`
+  ];
+
+  if (!report.audioBackend.available) {
+    lines.push(`- The ${report.audioBackend.backendName} audio backend is missing, so sound playback cannot work yet.`);
+  } else {
+    lines.push(`- The ${report.audioBackend.backendName} audio backend is available on this machine.`);
+  }
+
+  lines.push('', 'Do this next:');
+  for (const step of report.nextSteps) {
+    lines.push(`- ${step}`);
+  }
+
+  return {
+    ok: installResult.ok,
+    message: lines.join('\n'),
+    report
+  };
+}
+
+export function getLaunchContext(shellName = detectPreferredShell()) {
+  const resolvedShell = getHookSnippet(shellName) ? shellName : detectPreferredShell();
+  const hookStatus = isHookInstalled(resolvedShell);
+  const audioBackend = getAudioBackendStatus();
+
+  return {
+    shell: resolvedShell,
+    hookInstalled: hookStatus.installed,
+    profilePath: hookStatus.profilePath,
+    audioBackend
+  };
+}
+
+export function ensureSetupForLaunch(shellName = detectPreferredShell()) {
+  const initial = getLaunchContext(shellName);
+  if (initial.hookInstalled) {
+    return {
+      shell: initial.shell,
+      hookInstalled: true,
+      hookChanged: false,
+      profilePath: initial.profilePath,
+      audioBackend: initial.audioBackend,
+      installMessage: null
+    };
+  }
+
+  const installResult = installHookSnippet(initial.shell);
+  const afterInstall = getLaunchContext(initial.shell);
+  return {
+    shell: afterInstall.shell,
+    hookInstalled: afterInstall.hookInstalled,
+    hookChanged: installResult.ok,
+    profilePath: afterInstall.profilePath,
+    audioBackend: afterInstall.audioBackend,
+    installMessage: installResult.message
   };
 }
 

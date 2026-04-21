@@ -9,7 +9,7 @@ import {
   saveConfig
 } from './index.js';
 
-function SoundfxTui({ args, interactive }) {
+function SoundfxTui({ args, interactive, launchContext }) {
   const { exit } = useApp();
   const [config, setConfig] = useState(() => loadConfig());
   const [selectedEventIndex, setSelectedEventIndex] = useState(0);
@@ -34,6 +34,17 @@ function SoundfxTui({ args, interactive }) {
       cancelled = true;
     };
   }, [args]);
+
+  useEffect(() => {
+    if (!launchContext) return;
+    if (launchContext.hookChanged) {
+      setStatus(`First-time setup is done. Restart your ${launchContext.shell} terminal once after you finish here so command sounds can start working.`);
+      return;
+    }
+    if (!launchContext.audioBackend?.available) {
+      setStatus(`The ${launchContext.audioBackend.backendName} audio backend is missing, so previews may stay silent until that is fixed.`);
+    }
+  }, [launchContext]);
 
   const selectedMapping = useMemo(() => config[selectedEvent.id], [config, selectedEvent]);
 
@@ -142,6 +153,23 @@ function SoundfxTui({ args, interactive }) {
     { flexDirection: 'column', padding: 1 },
     React.createElement(Text, { color: 'cyan', bold: true }, 'soundfx CLI'),
     React.createElement(Text, { color: 'gray' }, 'Map terminal events to sound effects. Use Left/Right or E/S to switch panes.'),
+    launchContext
+      ? React.createElement(
+          Box,
+          { marginTop: 1, flexDirection: 'column', borderStyle: 'round', borderColor: launchContext.hookChanged ? 'green' : 'blue', paddingX: 1 },
+          React.createElement(Text, { color: launchContext.hookChanged ? 'green' : 'blue', bold: true }, launchContext.hookChanged ? 'First-Time Setup Complete' : 'Setup Status'),
+          React.createElement(Text, null, launchContext.hookChanged
+            ? `soundfx just connected itself to your ${launchContext.shell} shell profile at ${launchContext.profilePath}.`
+            : `soundfx is using your ${launchContext.shell} shell profile at ${launchContext.profilePath}.`),
+          React.createElement(Text, null, launchContext.hookChanged
+            ? `After you finish here, open a new terminal window or run exec ${launchContext.shell} once.`
+            : `If command sounds are not triggering yet, open a new terminal window or run exec ${launchContext.shell}.`),
+          React.createElement(Text, null, launchContext.audioBackend?.available
+            ? `Audio playback backend: ${launchContext.audioBackend.backendName} is ready.`
+            : `Audio playback backend: ${launchContext.audioBackend?.backendName || 'unknown'} is not ready.`),
+          React.createElement(Text, null, launchContext.audioBackend?.permissionsNote || '')
+        )
+      : null,
     React.createElement(Box, { marginTop: 1, gap: 3 },
       React.createElement(
         Box,
@@ -203,9 +231,9 @@ function SoundfxTui({ args, interactive }) {
   );
 }
 
-export async function runTui(args = []) {
+export async function runTui(args = [], launchContext = null) {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  const instance = render(React.createElement(SoundfxTui, { args, interactive }));
+  const instance = render(React.createElement(SoundfxTui, { args, interactive, launchContext }));
   if (!interactive) {
     setTimeout(() => instance.unmount(), 800);
   }
