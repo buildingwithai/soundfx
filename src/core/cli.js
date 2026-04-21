@@ -22,6 +22,7 @@ import {
   readEventLog,
   readPlaybackLog,
   runSetup,
+  runUninstall,
   saveConfig,
   uninstallHookSnippet
 } from './index.js';
@@ -195,12 +196,19 @@ if (command === 'setup') {
   process.exit(result.ok ? 0 : 1);
 }
 
+if (command === 'uninstall') {
+  const shellName = args[1] || detectPreferredShell();
+  const result = await runUninstall(shellName);
+  console.log(result.message);
+  process.exit(result.ok ? 0 : 1);
+}
+
 if (command === 'tui' || !command) {
   const launchContext = ensureSetupForLaunch(detectPreferredShell());
   await runTui(args, launchContext);
 }
 
-if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup'].includes(command)) {
+if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup', 'uninstall'].includes(command)) {
   printUsage();
   process.exit(1);
 }

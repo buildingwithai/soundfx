@@ -18,6 +18,7 @@ This package does **not** include:
 ```bash
 soundfx tui
 soundfx doctor
+soundfx uninstall <shell>
 soundfx events
 soundfx sounds
 soundfx assign <eventId> <soundId>
@@ -46,6 +47,40 @@ soundfx test-sound default-1
 ```
 
 Behind the scenes, soundfx still needs one small shell hook so it knows when commands succeed, fail, or are unknown. On first launch, the app installs that hook for you automatically.
+
+## Uninstall
+
+If you want to stop soundfx from hooking into your terminal:
+
+```bash
+soundfx uninstall zsh
+```
+
+Then, if you also want to remove the package itself:
+
+```bash
+npm uninstall -g @buildingwithai/soundfx
+```
+
+## Event meanings
+
+- `unknown_command`: you typed something your shell does not recognize
+- `command_success`: a command finished normally
+- `command_error`: a real command ran, but it finished with a failure
+- `command_interrupted`: you stopped a running command with `Ctrl+C`
+- `sudo_used`: the command started with `sudo`
+- `git_commit`: you ran `git commit`
+- `npm_install`: you ran an install command like `npm install`
+
+`unknown_command` and `command_error` are not the same thing.
+
+- `unknown_command` means the shell could not even find a command to run
+- `command_error` means the command did exist and started, but it ended badly
+
+Example:
+
+- `h` -> `unknown_command`
+- `cat missing-file.txt` -> `command_error`
 
 ## Local development
 

@@ -3,11 +3,42 @@ import { Box, Text, render, useApp, useInput } from 'ink';
 import {
   TERMINAL_EVENTS,
   SOUND_LIBRARY,
+  getCurrentPreviewSoundId,
   getDefaultConfig,
   loadConfig,
-  playSound,
-  saveConfig
+  saveConfig,
+  stopPreviewSound,
+  togglePreviewSound
 } from './index.js';
+
+const EVENT_WINDOW_SIZE = 6;
+const SOUND_WINDOW_SIZE = 10;
+
+function getWindowedItems(items, selectedIndex, windowSize) {
+  const total = items.length;
+  if (total <= windowSize) {
+    return {
+      start: 0,
+      end: total,
+      items: items.map((item, index) => ({ item, index }))
+    };
+  }
+
+  const half = Math.floor(windowSize / 2);
+  let start = Math.max(0, selectedIndex - half);
+  let end = start + windowSize;
+
+  if (end > total) {
+    end = total;
+    start = end - windowSize;
+  }
+
+  return {
+    start,
+    end,
+    items: items.slice(start, end).map((item, offset) => ({ item, index: start + offset }))
+  };
+}
 
 function SoundfxTui({ args, interactive, launchContext }) {
   const { exit } = useApp();
@@ -17,6 +48,7 @@ function SoundfxTui({ args, interactive, launchContext }) {
   const [focusPane, setFocusPane] = useState('events');
   const [status, setStatus] = useState('Ready. Use Left/Right to switch panes, Up/Down to move, Enter to save, P to preview, and Q to quit.');
   const [authReady, setAuthReady] = useState(false);
+  const [previewSoundId, setPreviewSoundId] = useState(null);
 
   const selectedEvent = TERMINAL_EVENTS[selectedEventIndex];
   const selectedSound = SOUND_LIBRARY[selectedSoundIndex];
@@ -47,6 +79,14 @@ function SoundfxTui({ args, interactive, launchContext }) {
   }, [launchContext]);
 
   const selectedMapping = useMemo(() => config[selectedEvent.id], [config, selectedEvent]);
+  const eventWindow = useMemo(
+    () => getWindowedItems(TERMINAL_EVENTS, selectedEventIndex, EVENT_WINDOW_SIZE),
+    [selectedEventIndex]
+  );
+  const soundWindow = useMemo(
+    () => getWindowedItems(SOUND_LIBRARY, selectedSoundIndex, SOUND_WINDOW_SIZE),
+    [selectedSoundIndex]
+  );
 
   useEffect(() => {
     const mappedSoundIndex = SOUND_LIBRARY.findIndex((sound) => sound.id === selectedMapping);
@@ -72,9 +112,26 @@ function SoundfxTui({ args, interactive, launchContext }) {
   };
 
   const previewCurrent = async () => {
-    await playSound(selectedSound.id);
-    setStatus(`Previewed ${selectedSound.name}`);
+    const result = await togglePreviewSound(selectedSound.id);
+    setPreviewSoundId(getCurrentPreviewSoundId());
+    if (!result.ok) {
+      setStatus(result.reason || `Could not preview ${selectedSound.name}.`);
+      return;
+    }
+    if (result.action === 'started') {
+      setStatus(`Playing ${selectedSound.name}. Press Space again to stop it.`);
+      return;
+    }
+    if (result.action === 'stopped') {
+      setStatus(`${selectedSound.name} stopped.`);
+      return;
+    }
+    setStatus('Preview is idle.');
   };
+
+  useEffect(() => () => {
+    stopPreviewSound();
+  }, []);
 
   useInput((input, key) => {
     if (!authReady) return;
@@ -175,7 +232,10 @@ function SoundfxTui({ args, interactive, launchContext }) {
         Box,
         { flexDirection: 'column', width: 44, borderStyle: 'round', borderColor: focusPane === 'events' ? 'cyan' : 'gray', paddingX: 1 },
         React.createElement(Text, { color: 'cyan', bold: true }, focusPane === 'events' ? 'Terminal Events [ACTIVE]' : 'Terminal Events'),
-        ...TERMINAL_EVENTS.map((event, index) => {
+        eventWindow.start > 0
+          ? React.createElement(Text, { key: 'events-up', color: 'gray' }, `... ${eventWindow.start} more above`)
+          : null,
+        ...eventWindow.items.map(({ item: event, index }) => {
           const active = index === selectedEventIndex;
           const soundId = config[event.id];
           const sound = SOUND_LIBRARY.find((item) => item.id === soundId);
@@ -187,24 +247,34 @@ function SoundfxTui({ args, interactive, launchContext }) {
             { key: event.id, color, backgroundColor: bgColor },
             `${prefix} ${event.label} -> ${sound?.name || 'none'}`
           );
-        })
+        }),
+        eventWindow.end < TERMINAL_EVENTS.length
+          ? React.createElement(Text, { key: 'events-down', color: 'gray' }, `... ${TERMINAL_EVENTS.length - eventWindow.end} more below`)
+          : null
       ),
       React.createElement(
         Box,
         { flexDirection: 'column', width: 38, borderStyle: 'round', borderColor: focusPane === 'sounds' ? 'green' : 'gray', paddingX: 1 },
         React.createElement(Text, { color: 'green', bold: true }, focusPane === 'sounds' ? 'Sound Library [ACTIVE]' : 'Sound Library'),
-        ...SOUND_LIBRARY.map((sound, index) => {
+        soundWindow.start > 0
+          ? React.createElement(Text, { key: 'sounds-up', color: 'gray' }, `... ${soundWindow.start} more above`)
+          : null,
+        ...soundWindow.items.map(({ item: sound, index }) => {
           const active = index === selectedSoundIndex;
           const assigned = selectedMapping === sound.id;
-          const prefix = active ? '>' : assigned ? '*' : ' ';
-          const color = active ? 'black' : assigned ? 'green' : 'white';
+          const previewing = previewSoundId === sound.id;
+          const prefix = active ? '>' : previewing ? '|' : assigned ? '*' : ' ';
+          const color = active ? 'black' : previewing ? 'cyan' : assigned ? 'green' : 'white';
           const bgColor = active ? 'green' : undefined;
           return React.createElement(
             Text,
             { key: sound.id, color, backgroundColor: bgColor },
-            `${prefix} ${sound.name}`
+            `${prefix} ${sound.name}${previewing ? ' [playing]' : ''}`
           );
-        })
+        }),
+        soundWindow.end < SOUND_LIBRARY.length
+          ? React.createElement(Text, { key: 'sounds-down', color: 'gray' }, `... ${SOUND_LIBRARY.length - soundWindow.end} more below`)
+          : null
       )
     ),
     React.createElement(
@@ -215,11 +285,23 @@ function SoundfxTui({ args, interactive, launchContext }) {
       React.createElement(Text, null, `Event: ${selectedEvent.id}`),
       React.createElement(Text, null, `Sound: ${selectedSound.name}`),
       React.createElement(Text, null, `Saved mapping for this event: ${SOUND_LIBRARY.find((sound) => sound.id === selectedMapping)?.name || 'none'}`),
+      React.createElement(Text, null, `Preview playing: ${previewSoundId ? SOUND_LIBRARY.find((sound) => sound.id === previewSoundId)?.name || previewSoundId : 'none'}`),
+      React.createElement(Text, null,
+        selectedEvent.id === 'unknown_command'
+          ? 'Meaning: you typed something your shell does not recognize, like a command that does not exist.'
+          : selectedEvent.id === 'command_error'
+            ? 'Meaning: a real command did run, but it finished with a failure.'
+            : selectedEvent.id === 'command_interrupted'
+              ? 'Meaning: you stopped a running command with Ctrl+C.'
+              : selectedEvent.id === 'sudo_used'
+                ? 'Meaning: a command started with sudo. This can happen even if the command later succeeds or fails.'
+                : null
+      ),
       React.createElement(
         Text,
         null,
         interactive
-          ? 'Left/Right or E/S = switch panes, Up/Down = move, Enter = save, P or Space = preview, R = reset, Q = quit'
+          ? 'Left/Right or E/S = switch panes, Up/Down = move, Enter = save, Space = play or stop preview, R = reset, Q = quit'
           : 'Interactive keyboard input is not available in this shell. Run `soundfx tui` in a normal terminal window to use the live controls.'
       )
     ),

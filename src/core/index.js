@@ -20,21 +20,27 @@ export const PLAYBACK_LOG_PATH = path.join(os.homedir(), '.soundfx-playback.log'
 export const LEGACY_PLAYBACK_LOG_PATH = path.join(os.homedir(), '.sonicbarn-playback.log');
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_ENTRY_PATH = path.join(MODULE_DIR, 'cli.js');
+let currentPreviewProcess = null;
+let currentPreviewSoundId = null;
 
 export const TERMINAL_EVENTS = [
   { id: 'unknown_command', label: 'Unknown command entered' },
   { id: 'command_success', label: 'Command executed successfully' },
   { id: 'command_error', label: 'Command failed with error' },
+  { id: 'command_interrupted', label: 'Command interrupted with Ctrl+C' },
   { id: 'sudo_used', label: 'Sudo or admin command used' },
   { id: 'git_commit', label: 'Git commit created' },
   { id: 'npm_install', label: 'Package install completed' },
 ];
 
-export const SOUND_LIBRARY = DEFAULT_SOUNDS.map((sound) => ({
+export const SOUND_LIBRARY = [
+  { id: 'none', name: 'No sound', url: null },
+  ...DEFAULT_SOUNDS.map((sound) => ({
   id: sound.id,
   name: sound.name,
   url: sound.url
-}));
+}))
+];
 
 const LEGACY_SOUND_ID_MAP = {
   error: 'default-16',
@@ -52,6 +58,7 @@ export function getDefaultConfig() {
     unknown_command: 'default-16',
     command_error: 'default-7',
     command_success: 'default-1',
+    command_interrupted: 'none',
     sudo_used: 'default-16',
     git_commit: 'default-3',
     npm_install: 'default-1'
@@ -118,6 +125,7 @@ soundfx CLI
 Usage:
   soundfx tui
   soundfx setup [shell]
+  soundfx uninstall [shell]
   soundfx doctor [shell]
   soundfx events
   soundfx sounds
@@ -192,9 +200,11 @@ export function getHookSnippet(shellName, commandSpec = getHookCommandSpec()) {
   if (shellName === 'bash') {
     return `${markerStart}
 __soundfx_last_command=""
+__soundfx_unknown_command_fired=0
 
 __soundfx_preexec() {
   __soundfx_last_command="$BASH_COMMAND"
+  __soundfx_unknown_command_fired=0
   case "$__soundfx_last_command" in
     sudo*) ${bashCommand} event sudo_used >/dev/null 2>&1 & ;;
   esac
@@ -205,7 +215,11 @@ trap '__soundfx_preexec' DEBUG
 __soundfx_precmd() {
   local exit_code=$?
   if [[ -n "$__soundfx_last_command" && "$__soundfx_last_command" != "${bashCommand} event "* ]]; then
-    if [[ $exit_code -eq 0 ]]; then
+    if [[ $__soundfx_unknown_command_fired -eq 1 ]]; then
+      __soundfx_unknown_command_fired=0
+    elif [[ $exit_code -eq 130 ]]; then
+      ${bashCommand} event command_interrupted >/dev/null 2>&1 &
+    elif [[ $exit_code -eq 0 ]]; then
       ${bashCommand} event command_success >/dev/null 2>&1 &
     else
       ${bashCommand} event command_error >/dev/null 2>&1 &
@@ -221,12 +235,14 @@ __soundfx_precmd() {
 PROMPT_COMMAND="__soundfx_precmd"
 
 command_not_found_handle() {
+  __soundfx_unknown_command_fired=1
   ${bashCommand} event unknown_command >/dev/null 2>&1 &
   echo "command not found: $1"
   return 127
 }
 
 command_not_found_handler() {
+  __soundfx_unknown_command_fired=1
   ${bashCommand} event unknown_command >/dev/null 2>&1 &
   echo "command not found: $1"
   return 127
@@ -237,9 +253,11 @@ ${markerEnd}`;
   if (shellName === 'zsh') {
     return `${markerStart}
 typeset -g SOUNDFX_LAST_COMMAND=""
+typeset -g SOUNDFX_UNKNOWN_COMMAND_FIRED=0
 
 function soundfx_preexec() {
   SOUNDFX_LAST_COMMAND="$1"
+  SOUNDFX_UNKNOWN_COMMAND_FIRED=0
   case "$SOUNDFX_LAST_COMMAND" in
     sudo*) ${bashCommand} event sudo_used >/dev/null 2>&1 & ;;
   esac
@@ -248,7 +266,11 @@ function soundfx_preexec() {
 function soundfx_precmd() {
   local exit_code=$?
   if [[ -n "$SOUNDFX_LAST_COMMAND" && "$SOUNDFX_LAST_COMMAND" != "${bashCommand} event "* ]]; then
-    if [[ $exit_code -eq 0 ]]; then
+    if [[ $SOUNDFX_UNKNOWN_COMMAND_FIRED -eq 1 ]]; then
+      SOUNDFX_UNKNOWN_COMMAND_FIRED=0
+    elif [[ $exit_code -eq 130 ]]; then
+      ${bashCommand} event command_interrupted >/dev/null 2>&1 &
+    elif [[ $exit_code -eq 0 ]]; then
       ${bashCommand} event command_success >/dev/null 2>&1 &
     else
       ${bashCommand} event command_error >/dev/null 2>&1 &
@@ -266,6 +288,7 @@ add-zsh-hook preexec soundfx_preexec
 add-zsh-hook precmd soundfx_precmd
 
 command_not_found_handler() {
+  SOUNDFX_UNKNOWN_COMMAND_FIRED=1
   ${bashCommand} event unknown_command >/dev/null 2>&1 &
   echo "command not found: $1"
   return 127
@@ -540,6 +563,26 @@ export async function runSetup(shellName = detectPreferredShell()) {
   };
 }
 
+export async function runUninstall(shellName = detectPreferredShell()) {
+  const resolvedShell = getHookSnippet(shellName) ? shellName : detectPreferredShell();
+  const uninstallResult = uninstallHookSnippet(resolvedShell);
+  const lines = [
+    'soundfx uninstall',
+    '',
+    uninstallResult.message,
+    '',
+    'What this means:',
+    `- soundfx will stop wiring itself into your ${resolvedShell} shell for future terminal sessions.`,
+    `- If your current terminal window is still making sounds, open a new terminal window or run \`exec ${resolvedShell}\` once.`,
+    '- If you also want to remove the package itself, run `npm uninstall -g @buildingwithai/soundfx`.'
+  ];
+
+  return {
+    ok: uninstallResult.ok,
+    message: lines.join('\n')
+  };
+}
+
 export function getLaunchContext(shellName = detectPreferredShell()) {
   const resolvedShell = getHookSnippet(shellName) ? shellName : detectPreferredShell();
   const hookStatus = isHookInstalled(resolvedShell);
@@ -726,6 +769,7 @@ function tryWindowsWavFallback(filePath) {
 export async function playSound(soundId) {
   const sound = findSound(soundId);
   if (!sound) return;
+  if (!sound.url) return;
 
   if (os.platform() === 'win32') {
     const cacheFile = await ensureCachedSoundFile(sound.url);
@@ -766,4 +810,150 @@ export async function playSound(soundId) {
       : `backend=linux-failed file=${cacheFile} stderr=${result.stderr}`);
     return;
   }
+}
+
+function clearPreviewState(processRef = null) {
+  if (!processRef || currentPreviewProcess === processRef) {
+    currentPreviewProcess = null;
+    currentPreviewSoundId = null;
+  }
+}
+
+function attachPreviewLifecycle(child, soundId) {
+  currentPreviewProcess = child;
+  currentPreviewSoundId = soundId;
+
+  child.on('exit', () => {
+    clearPreviewState(child);
+  });
+
+  child.on('error', () => {
+    clearPreviewState(child);
+  });
+}
+
+function startMacPreview(filePath, soundId) {
+  const child = spawn('afplay', [filePath], { stdio: 'ignore' });
+  attachPreviewLifecycle(child, soundId);
+  return { ok: true, soundId };
+}
+
+function startLinuxPreview(filePath, soundId) {
+  const linuxPlayers = [
+    ['paplay', [filePath]],
+    ['aplay', [filePath]],
+    ['ffplay', ['-nodisp', '-autoexit', '-loglevel', 'quiet', filePath]]
+  ];
+
+  for (const [player, args] of linuxPlayers) {
+    try {
+      const child = spawn(player, args, { stdio: 'ignore' });
+      attachPreviewLifecycle(child, soundId);
+      return { ok: true, soundId };
+    } catch {}
+  }
+
+  return {
+    ok: false,
+    soundId,
+    reason: 'No supported Linux audio player was found.'
+  };
+}
+
+function startWindowsPreview(filePath, soundId) {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -AssemblyName presentationCore",
+    `$player = New-Object System.Windows.Media.MediaPlayer`,
+    `$player.Open([Uri]'file:///${filePath.replace(/\\/g, '/')}')`,
+    "$deadline = [DateTime]::UtcNow.AddSeconds(5)",
+    "while (-not $player.NaturalDuration.HasTimeSpan -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }",
+    "$player.Volume = 1.0",
+    "$player.Play()",
+    "if ($player.NaturalDuration.HasTimeSpan) {",
+    "  $durationMs = [Math]::Ceiling($player.NaturalDuration.TimeSpan.TotalMilliseconds) + 250",
+    "  Start-Sleep -Milliseconds ([Math]::Min($durationMs, 15000))",
+    "} else {",
+    "  Start-Sleep -Seconds 4",
+    "}",
+    "$player.Stop()",
+    "$player.Close()"
+  ].join('; ');
+
+  try {
+    const child = spawn('powershell', [
+      '-NoProfile',
+      '-STA',
+      '-WindowStyle',
+      'Hidden',
+      '-Command',
+      script
+    ], { stdio: 'ignore' });
+    attachPreviewLifecycle(child, soundId);
+    return { ok: true, soundId };
+  } catch (error) {
+    return {
+      ok: false,
+      soundId,
+      reason: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+export function getCurrentPreviewSoundId() {
+  return currentPreviewSoundId;
+}
+
+export function stopPreviewSound() {
+  if (!currentPreviewProcess) {
+    return { ok: true, stopped: false };
+  }
+
+  const processRef = currentPreviewProcess;
+  try {
+    processRef.kill('SIGTERM');
+  } catch {}
+  clearPreviewState(processRef);
+  return { ok: true, stopped: true };
+}
+
+export async function togglePreviewSound(soundId) {
+  if (!soundId || soundId === 'none') {
+    const result = stopPreviewSound();
+    return { ok: true, action: result.stopped ? 'stopped' : 'idle', soundId: 'none' };
+  }
+
+  if (currentPreviewSoundId === soundId) {
+    stopPreviewSound();
+    return { ok: true, action: 'stopped', soundId };
+  }
+
+  stopPreviewSound();
+
+  const sound = findSound(soundId);
+  if (!sound?.url) {
+    return { ok: false, action: 'error', soundId, reason: 'No previewable sound file exists.' };
+  }
+
+  const cacheFile = await ensureCachedSoundFile(sound.url);
+  if (!cacheFile) {
+    return { ok: false, action: 'error', soundId, reason: 'Could not download the sound file.' };
+  }
+
+  if (os.platform() === 'darwin') {
+    const result = startMacPreview(cacheFile, soundId);
+    return { ...result, action: result.ok ? 'started' : 'error' };
+  }
+
+  if (os.platform() === 'linux') {
+    const result = startLinuxPreview(cacheFile, soundId);
+    return { ...result, action: result.ok ? 'started' : 'error' };
+  }
+
+  if (os.platform() === 'win32') {
+    const result = startWindowsPreview(cacheFile, soundId);
+    return { ...result, action: result.ok ? 'started' : 'error' };
+  }
+
+  return { ok: false, action: 'error', soundId, reason: 'Unsupported platform.' };
 }
