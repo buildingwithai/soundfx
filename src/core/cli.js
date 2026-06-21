@@ -11,6 +11,7 @@ import {
   formatDoctorReport,
   getDoctorReport,
   getHookSnippet,
+  getHotkeyConfig,
   installHookSnippet,
   isHookInstalled,
   loadConfig,
@@ -24,9 +25,16 @@ import {
   runSetup,
   runUninstall,
   saveConfig,
+  setHotkeySound,
   shouldSuppressEvent,
   uninstallHookSnippet
 } from './index.js';
+import {
+  getLaunchAgentStatus,
+  installLaunchAgent,
+  runHotkeyListener,
+  uninstallLaunchAgent
+} from './hotkey.js';
 import { runTui } from './tui.js';
 
 const args = process.argv.slice(2);
@@ -215,12 +223,67 @@ if (command === 'uninstall') {
   process.exit(result.ok ? 0 : 1);
 }
 
+if (command === 'listen') {
+  await runHotkeyListener();
+}
+
+if (command === 'hotkey') {
+  const sub = args[1] || 'status';
+  if (sub === 'install') {
+    const result = installLaunchAgent();
+    console.log(result.message);
+    process.exit(result.ok ? 0 : 1);
+  } else if (sub === 'uninstall') {
+    const result = uninstallLaunchAgent();
+    console.log(result.message);
+    process.exit(result.ok ? 0 : 1);
+  } else if (sub === 'sound') {
+    const soundId = args[2];
+    const sound = findSound(soundId);
+    if (!sound) {
+      console.log(`Unknown sound: ${soundId}`);
+      printSounds();
+      process.exit(1);
+    }
+    (async () => {
+      const hotkey = await setHotkeySound(sound.id);
+      console.log(`Hotkey ${hotkey.sequence.join(' → ')} now plays ${sound.name} (${sound.id}).`);
+      console.log('If the listener is already running, restart it: `soundfx hotkey uninstall && soundfx hotkey install`.');
+      process.exit(0);
+    })();
+  } else if (sub === 'test') {
+    (async () => {
+      const { soundId, sequence } = getHotkeyConfig();
+      console.log(`Playing the ${sequence.join(' → ')} sound (${soundId})`);
+      await playSound(soundId);
+      setTimeout(() => process.exit(0), 100);
+    })();
+  } else if (sub === 'status') {
+    const status = getLaunchAgentStatus();
+    console.log(`
+soundfx hotkey
+
+- Sequence: ${status.sequence.join(' → ')} (within ${status.windowMs}ms)
+- Plays: ${findSound(status.soundId)?.name || status.soundId} (${status.soundId})
+- Auto-start agent: ${status.installed ? 'installed' : 'not installed'}${status.installed ? ` (${status.running ? 'running' : 'not running'})` : ''}
+- Plist: ${status.plistPath}
+
+Commands: hotkey install | hotkey uninstall | hotkey sound <soundId> | hotkey test | listen
+`);
+    process.exit(0);
+  } else {
+    console.log(`Unknown hotkey command: ${sub}`);
+    console.log('Use: hotkey install | uninstall | status | sound <soundId> | test');
+    process.exit(1);
+  }
+}
+
 if (command === 'tui' || !command) {
   const launchContext = ensureSetupForLaunch(detectPreferredShell());
   await runTui(args, launchContext);
 }
 
-if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup', 'uninstall'].includes(command)) {
+if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup', 'uninstall', 'listen', 'hotkey'].includes(command)) {
   printUsage();
   process.exit(1);
 }

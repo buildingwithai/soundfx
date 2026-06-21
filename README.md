@@ -27,6 +27,8 @@ soundfx test-sound <soundId>
 soundfx install-hook <shell>
 soundfx uninstall-hook <shell>
 soundfx hook-status <shell>
+soundfx listen
+soundfx hotkey [install|uninstall|status|sound <soundId>|test]
 ```
 
 ## Quick start
@@ -55,6 +57,28 @@ Inside the TUI:
 - recently previewed or assigned sounds float toward the top
 - press `Esc` to clear the current filter
 - press `Space` to play or stop the selected preview
+
+## Computer-wide hotkey
+
+Beyond the terminal, soundfx can play a sound when you press a key sequence **anywhere** on your computer. By default, pressing `6` then `7` quickly (within 400ms) plays the "6 7 (Six Seven)" meme sound.
+
+```bash
+soundfx hotkey status            # show the current sequence, sound, and agent state
+soundfx hotkey sound default-9   # pick a different sound (e.g. VINE BOOM)
+soundfx hotkey test              # play the sound now, without pressing the keys
+soundfx listen                   # run the listener in the foreground (Ctrl+C to stop)
+soundfx hotkey install           # auto-start the listener at login (macOS)
+soundfx hotkey uninstall         # remove the auto-start agent
+```
+
+First run on macOS asks for **Input Monitoring** permission (System Settings → Privacy & Security → Input Monitoring). That is required for any app to watch the keyboard globally, and you only grant it once. The tip: run `soundfx listen` once in a terminal to trigger the prompt, then `soundfx hotkey install` to keep it running in the background.
+
+Privacy: the listener only checks whether your keystrokes match the trigger sequence. It never logs, stores, or transmits what you type.
+
+Notes:
+
+- The sequence keys are plain digits, so typing `67` inside normal text (a year, a phone number) can also trigger it. To make it deliberate, you can edit `sequence` / `windowMs` under `__hotkey` in `~/.soundfx-cli.json`.
+- The global listener currently supports macOS and Windows. On Windows, run `soundfx listen` at startup yourself; the `hotkey install` auto-start agent is macOS-only for now.
 
 ## Uninstall
 

@@ -107,5 +107,6 @@ export const DEFAULT_SOUNDS = [
   { id: 'default-106', name: 'Michael Rosen: Noice', url: 'https://www.myinstants.com/media/sounds/-click-nice_3.mp3', hotkey: null, isCustom: false, category: 'Meme', categoryColor: '#fbbf24' },
   { id: 'default-107', name: 'Biden Skill Issue', url: 'https://www.myinstants.com/media/sounds/biden-skill-issue.mp3', hotkey: null, isCustom: false, category: 'Meme', categoryColor: '#fbbf24' },
   { id: 'default-108', name: 'Joe Biden - Come On Man', url: 'https://www.myinstants.com/media/sounds/come-on-maaan_h1XE6WF.mp3', hotkey: null, isCustom: false, category: 'Meme', categoryColor: '#fbbf24' },
-  { id: 'default-109', name: 'Goddamnit lil pecker licker', url: 'https://www.myinstants.com/media/sounds/goddamnit-lil-pecker-licker.mp3', hotkey: null, isCustom: false, category: 'Meme', categoryColor: '#fbbf24' }
+  { id: 'default-109', name: 'Goddamnit lil pecker licker', url: 'https://www.myinstants.com/media/sounds/goddamnit-lil-pecker-licker.mp3', hotkey: null, isCustom: false, category: 'Meme', categoryColor: '#fbbf24' },
+  { id: 'default-110', name: '6 7 (Six Seven)', url: 'https://www.myinstants.com/media/sounds/67_SQlv2Xv.mp3', hotkey: null, isCustom: false, category: 'Meme', categoryColor: '#fbbf24' }
 ];

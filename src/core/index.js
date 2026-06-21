@@ -48,6 +48,16 @@ export const DEFAULT_CONFIG_META = {
   recentSoundIds: []
 };
 
+// Computer-wide hotkey: pressing this key sequence anywhere plays a sound.
+// Defaults to the "6 7 (Six Seven)" meme sound on `6` then `7`. ponytail: bare
+// digits collide with typing "67" in normal text — upgrade path is a
+// modifier-based sequence or a tighter window.
+export const DEFAULT_HOTKEY = {
+  sequence: ['6', '7'],
+  windowMs: 400,
+  soundId: 'default-110'
+};
+
 const LEGACY_SOUND_ID_MAP = {
   error: 'default-16',
   vine_boom: 'default-9',
@@ -68,8 +78,27 @@ export function getDefaultConfig() {
     sudo_used: 'default-16',
     git_commit: 'default-3',
     npm_install: 'default-1',
-    __meta: { ...DEFAULT_CONFIG_META }
+    __meta: { ...DEFAULT_CONFIG_META },
+    __hotkey: { ...DEFAULT_HOTKEY }
   };
+}
+
+export function getHotkeyConfig(config = loadConfig()) {
+  const saved = config && typeof config.__hotkey === 'object' ? config.__hotkey : {};
+  return {
+    sequence: Array.isArray(saved.sequence) && saved.sequence.length
+      ? saved.sequence.map(String)
+      : [...DEFAULT_HOTKEY.sequence],
+    windowMs: Number.isFinite(saved.windowMs) ? saved.windowMs : DEFAULT_HOTKEY.windowMs,
+    soundId: saved.soundId || DEFAULT_HOTKEY.soundId
+  };
+}
+
+export async function setHotkeySound(soundId) {
+  const config = loadConfig();
+  config.__hotkey = { ...getHotkeyConfig(config), soundId };
+  await saveConfig(config);
+  return config.__hotkey;
 }
 
 function readJsonFile(filePath) {
@@ -159,6 +188,8 @@ Usage:
   soundfx hook-status [bash|zsh|powershell]
   soundfx event-log [clear]
   soundfx playback-log [clear]
+  soundfx listen
+  soundfx hotkey [install|uninstall|status|sound <soundId>|test]
   Note: powershell = Windows PowerShell, pwsh = PowerShell 7+
 `);
 }
