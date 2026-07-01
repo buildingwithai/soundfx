@@ -17,6 +17,7 @@ import {
   loadConfig,
   loadConfigWithSync,
   playSound,
+  playSoundFile,
   printEvents,
   printSounds,
   printUsage,
@@ -49,6 +50,13 @@ import {
   setMute,
   uninstallAgentHooks
 } from './agents.js';
+import {
+  getPack,
+  installPack,
+  listInstalledPacks,
+  resolvePackSound,
+  uninstallPack
+} from './packs.js';
 import { runTui } from './tui.js';
 
 const args = process.argv.slice(2);
@@ -279,6 +287,18 @@ if (command === 'agent-event') {
       process.exit(0);
     }
 
+    // Precedence: active CESP pack > per-session voice > per-event config.
+    // A missing/broken pack falls through to voices — never silent by accident.
+    const activePack = config.__packs?.active ? getPack(config.__packs.active) : null;
+    if (activePack) {
+      const packFile = resolvePackSound(eventId, activePack.dir, activePack.manifest);
+      if (packFile && (await playSoundFile(packFile))) {
+        appendEventLog(eventId, `pack:${activePack.name}`);
+        setTimeout(() => process.exit(0), 100);
+        return;
+      }
+    }
+
     const soundId = resolveAgentSound(eventId, config, payload?.cwd, prefs, session?.voiceIndex ?? null);
     appendEventLog(eventId, soundId);
     if (soundId) {
@@ -370,6 +390,67 @@ Commands: agents init | uninstall | status | mute [minutes|off] | focus on|off |
   }
 }
 
+if (command === 'packs') {
+  const sub = args[1] || 'list';
+  if (sub === 'list') {
+    const packs = listInstalledPacks();
+    const active = loadConfig().__packs?.active || null;
+    if (packs.length === 0) {
+      console.log('\nNo sound packs installed.');
+      console.log('Install any CESP pack (openpeon.json format): soundfx packs install <dir-or-git-url>');
+      console.log('Community packs: https://github.com/PeonPing/openpeon\n');
+    } else {
+      console.log('\nInstalled packs:');
+      for (const pack of packs) {
+        const marker = pack.name === active ? ' (active)' : '';
+        const categories = Object.keys(pack.manifest.categories).length;
+        console.log(`  ${pack.name.padEnd(24)} ${pack.manifest.display_name || ''} — ${categories} categories${marker}`);
+      }
+      console.log(`\nActivate one: soundfx packs use <name> | back to voices: soundfx packs off\n`);
+    }
+    process.exit(0);
+  } else if (sub === 'install') {
+    const source = args[2];
+    if (!source) {
+      console.log('Usage: soundfx packs install <directory-or-git-url>');
+      process.exit(1);
+    }
+    const result = installPack(source);
+    console.log(result.message);
+    if (result.ok) console.log(`Activate it: soundfx packs use ${result.name}`);
+    process.exit(result.ok ? 0 : 1);
+  } else if (sub === 'uninstall') {
+    const result = uninstallPack(args[2]);
+    console.log(result.message);
+    process.exit(result.ok ? 0 : 1);
+  } else if (sub === 'use') {
+    const pack = getPack(args[2]);
+    if (!pack) {
+      console.log(`Pack not installed: ${args[2]} (see: soundfx packs list)`);
+      process.exit(1);
+    }
+    (async () => {
+      const config = await loadConfigWithSync();
+      config.__packs = { active: pack.name };
+      await saveConfig(config);
+      console.log(`Agent sounds now play from "${pack.manifest.display_name || pack.name}".`);
+      process.exit(0);
+    })();
+  } else if (sub === 'off') {
+    (async () => {
+      const config = await loadConfigWithSync();
+      delete config.__packs;
+      await saveConfig(config);
+      console.log('Pack deactivated — agent sounds use per-session voices again.');
+      process.exit(0);
+    })();
+  } else {
+    console.log(`Unknown packs command: ${sub}`);
+    console.log('Use: packs list | install <dir-or-git-url> | use <name> | off | uninstall <name>');
+    process.exit(1);
+  }
+}
+
 if (command === 'listen') {
   await runHotkeyListener();
 }
@@ -430,7 +511,7 @@ if (command === 'tui' || !command) {
   await runTui(args, launchContext);
 }
 
-if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup', 'uninstall', 'listen', 'hotkey', 'agents', 'agent-event'].includes(command)) {
+if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup', 'uninstall', 'listen', 'hotkey', 'agents', 'agent-event', 'packs'].includes(command)) {
   printUsage();
   process.exit(1);
 }

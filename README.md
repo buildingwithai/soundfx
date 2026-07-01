@@ -61,7 +61,11 @@ Inside the TUI:
 ## AI agent sounds
 
 Hear your AI coding agents instead of watching them. One command wires **Claude Code**
-and **Codex** into soundfx:
+and **Codex** into soundfx — or paste this into Claude Code and it installs its own voice:
+
+> Give yourself a voice: run `npm install -g @buildingwithai/soundfx && soundfx agents init`,
+> then play `soundfx test-event agent_done` so I can hear that you're wired,
+> and tell me which sound each of your events makes now.
 
 ```bash
 soundfx agents init      # installs Claude Code hooks + the Codex notify dispatcher
@@ -100,6 +104,27 @@ Notes:
 - Change any mapping with `soundfx tui` or `soundfx assign agent_done <soundId>`
   (with voices on, the voice set wins for done/needs-input/subagent sounds).
 - Already-running agent sessions pick the hooks up on their next restart.
+
+### Sound packs (CESP)
+
+soundfx plays **CESP** packs — the open [openpeon.json](https://github.com/PeonPing/openpeon)
+format — so existing community packs work as-is:
+
+```bash
+soundfx packs install <directory-or-git-url>   # any pack with an openpeon.json
+soundfx packs use <name>                       # agent events now play from the pack
+soundfx packs off                              # back to per-session voices
+soundfx packs list
+```
+
+With a pack active, `done` / `needs input` / `error` draw a random variant from the
+pack's `task.complete` / `input.required` / `task.error` categories. A broken or
+missing pack falls back to voices — never silence by accident. Pack licensing is the
+pack author's responsibility; see [docs/sound-provenance.md](docs/sound-provenance.md)
+for how the default library is sourced.
+
+Hear the whole thing without real agents: `./scripts/demo-parallel-agents.sh`
+simulates four parallel sessions (distinct voices, needs-input, overlapping subagents).
 
 ## Computer-wide hotkey
 

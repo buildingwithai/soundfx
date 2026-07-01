@@ -147,4 +147,38 @@ assert.strictEqual(isMuted(null), false, 'no mute state -> not muted');
 assert.strictEqual(isMuted({ until: T + 1000 }, T), true, 'muted before expiry');
 assert.strictEqual(isMuted({ until: T - 1 }, T), false, 'mute expires');
 
+// --- Week 3: CESP pack support ---
+{
+  const { validateManifest, resolvePackSound, CESP_EVENT_MAP } = await import('../src/core/packs.js');
+
+  const manifest = {
+    cesp_version: '1.0',
+    name: 'test-pack',
+    display_name: 'Test Pack',
+    categories: {
+      'task.complete': { sounds: [{ file: 'sounds/done1.mp3' }, { file: 'sounds/done2.mp3' }] },
+      'input.required': { sounds: [{ file: 'sounds/help.mp3' }] },
+      'task.error': { sounds: [{ file: 'sounds/oops.mp3' }] }
+    }
+  };
+
+  assert.ok(validateManifest(JSON.stringify(manifest)).ok, 'valid CESP manifest accepted');
+  assert.ok(!validateManifest('{not json').ok, 'garbage JSON rejected');
+  assert.ok(!validateManifest({ name: 'x', categories: {} }).ok, 'missing cesp_version rejected');
+  assert.ok(!validateManifest({ cesp_version: '1.0', name: 'x', categories: { 'task.complete': { sounds: [{}] } } }).ok,
+    'sound entry without file rejected');
+
+  assert.strictEqual(CESP_EVENT_MAP.subagent_done, 'task.complete', 'subagent_done draws from task.complete');
+  const done = resolvePackSound('agent_done', '/packs/test', manifest, () => 0);
+  assert.strictEqual(done, '/packs/test/sounds/done1.mp3', 'rng=0 picks first variant');
+  const done2 = resolvePackSound('agent_done', '/packs/test', manifest, () => 0.99);
+  assert.strictEqual(done2, '/packs/test/sounds/done2.mp3', 'rng=.99 picks last variant');
+  assert.strictEqual(resolvePackSound('agent_needs_input', '/packs/test', manifest, () => 0),
+    '/packs/test/sounds/help.mp3', 'input.required maps to needs_input');
+  assert.strictEqual(resolvePackSound('agent_working', '/packs/test', manifest), null, 'unmapped event -> null');
+
+  const evil = { ...manifest, categories: { 'task.complete': { sounds: [{ file: '../../etc/passwd' }] } } };
+  assert.strictEqual(resolvePackSound('agent_done', '/packs/test', evil), null, 'path escape blocked');
+}
+
 console.log('agent hooks: all checks passed');

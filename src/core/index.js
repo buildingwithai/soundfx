@@ -200,7 +200,8 @@ Usage:
   soundfx playback-log [clear]
   soundfx listen
   soundfx hotkey [install|uninstall|status|sound <soundId>|test]
-  soundfx agents [init|uninstall|status]
+  soundfx agents [init|uninstall|status|mute|focus|voices]
+  soundfx packs [list|install <src>|use <name>|off|uninstall <name>]
   Note: powershell = Windows PowerShell, pwsh = PowerShell 7+
 `);
 }
@@ -992,6 +993,38 @@ export async function playSound(soundId, { overlap = false } = {}) {
       : `backend=linux-failed file=${cacheFile} stderr=${result.stderr}`);
     return;
   }
+}
+
+/** Play a local audio file (CESP pack sounds). Fire-and-forget with overlap;
+ *  reuses the per-platform backends. */
+export async function playSoundFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    appendPlaybackLog(`pack-file-missing file=${filePath}`);
+    return false;
+  }
+
+  if (os.platform() === 'darwin') {
+    try {
+      spawn('afplay', [filePath], { detached: true, stdio: 'ignore' }).unref();
+      appendPlaybackLog(`backend=macos-afplay file=${filePath} overlap=1 source=pack`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (os.platform() === 'win32') {
+    const played = tryWindowsNativeMediaPlayback(filePath);
+    if (played) return true;
+    const wavFile = await ensureWavFile(filePath);
+    return Boolean(wavFile && tryWindowsWavFallback(wavFile));
+  }
+
+  const result = playLinuxSoundFile(filePath);
+  appendPlaybackLog(result.ok
+    ? `backend=linux-${result.player} file=${filePath} source=pack`
+    : `backend=linux-failed file=${filePath} stderr=${result.stderr}`);
+  return result.ok;
 }
 
 function clearPreviewState(processRef = null) {
