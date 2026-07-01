@@ -32,6 +32,12 @@ export const TERMINAL_EVENTS = [
   { id: 'sudo_used', label: 'Sudo or admin command used' },
   { id: 'git_commit', label: 'Git commit created' },
   { id: 'npm_install', label: 'Package install completed' },
+  // AI agent events — fired by Claude Code hooks / the Codex notify dispatcher
+  // via `soundfx agent-event <id>` (see src/core/agents.js).
+  { id: 'agent_done', label: 'AI agent finished its turn' },
+  { id: 'agent_needs_input', label: 'AI agent needs your input' },
+  { id: 'subagent_done', label: 'AI subagent finished' },
+  { id: 'agent_error', label: 'AI agent tool call failed' },
 ];
 
 export const SOUND_LIBRARY = [
@@ -78,6 +84,10 @@ export function getDefaultConfig() {
     sudo_used: 'default-16',
     git_commit: 'default-3',
     npm_install: 'default-1',
+    agent_done: 'default-28',
+    agent_needs_input: 'default-25',
+    subagent_done: 'default-2',
+    agent_error: 'none',
     __meta: { ...DEFAULT_CONFIG_META },
     __hotkey: { ...DEFAULT_HOTKEY }
   };
@@ -190,6 +200,7 @@ Usage:
   soundfx playback-log [clear]
   soundfx listen
   soundfx hotkey [install|uninstall|status|sound <soundId>|test]
+  soundfx agents [init|uninstall|status]
   Note: powershell = Windows PowerShell, pwsh = PowerShell 7+
 `);
 }
@@ -913,12 +924,14 @@ function tryWindowsWavFallback(filePath) {
   return false;
 }
 
-export async function playSound(soundId) {
+export async function playSound(soundId, { overlap = false } = {}) {
   const sound = findSound(soundId);
   if (!sound) return;
   if (!sound.url) return;
 
-  stopActiveEventPlayback();
+  // Agent events overlap: parallel subagents finishing together should all be
+  // heard, not cut each other off. Shell events keep the stop-previous behavior.
+  if (!overlap) stopActiveEventPlayback();
 
   if (os.platform() === 'win32') {
     const cacheFile = await ensureCachedSoundFile(sound.url);
@@ -945,21 +958,25 @@ export async function playSound(soundId) {
     if (!cacheFile) return;
     try {
       const child = spawn('afplay', [cacheFile], { stdio: 'ignore' });
-      writeEventPlaybackState({
-        pid: child.pid,
-        backend: 'macos-afplay',
-        soundId,
-        file: cacheFile,
-        startedAt: new Date().toISOString()
-      });
-      child.on('exit', () => {
-        const state = readEventPlaybackState();
-        if (state?.pid === child.pid) {
-          clearEventPlaybackState();
-        }
-      });
+      // Overlapping plays are fire-and-forget: they don't register as "the"
+      // active playback, so they can't be killed by (or kill) other events.
+      if (!overlap) {
+        writeEventPlaybackState({
+          pid: child.pid,
+          backend: 'macos-afplay',
+          soundId,
+          file: cacheFile,
+          startedAt: new Date().toISOString()
+        });
+        child.on('exit', () => {
+          const state = readEventPlaybackState();
+          if (state?.pid === child.pid) {
+            clearEventPlaybackState();
+          }
+        });
+      }
       child.unref();
-      appendPlaybackLog(`backend=macos-afplay file=${cacheFile} pid=${child.pid}`);
+      appendPlaybackLog(`backend=macos-afplay file=${cacheFile} pid=${child.pid}${overlap ? ' overlap=1' : ''}`);
     } catch (error) {
       appendPlaybackLog(`backend=macos-afplay-failed file=${cacheFile} code=null stderr=${error instanceof Error ? error.message : String(error)}`);
     }

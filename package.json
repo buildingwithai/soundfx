@@ -15,9 +15,10 @@
   "scripts": {
     "dev": "node ./website/server.js",
     "build:website": "node ./scripts/build-website.mjs",
-    "test": "node ./scripts/test-bug-fixes.mjs && node ./scripts/test-hotkey.mjs",
+    "test": "node ./scripts/test-bug-fixes.mjs && node ./scripts/test-hotkey.mjs && node ./scripts/test-agents.mjs",
     "test:bugs": "node ./scripts/test-bug-fixes.mjs",
     "test:hotkey": "node ./scripts/test-hotkey.mjs",
+    "test:agents": "node ./scripts/test-agents.mjs",
     "test:tui": "node ./src/core/cli.js tui --test",
     "events": "node ./src/core/cli.js events",
     "sounds": "node ./src/core/cli.js sounds",

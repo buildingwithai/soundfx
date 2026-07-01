@@ -58,6 +58,34 @@ Inside the TUI:
 - press `Esc` to clear the current filter
 - press `Space` to play or stop the selected preview
 
+## AI agent sounds
+
+Hear your AI coding agents instead of watching them. One command wires **Claude Code**
+and **Codex** into soundfx:
+
+```bash
+soundfx agents init      # installs Claude Code hooks + the Codex notify dispatcher
+soundfx agents status    # check what's wired
+soundfx agents uninstall # removes only soundfx's hooks, restores your Codex notify
+```
+
+| Event | When it fires | Default sound |
+|---|---|---|
+| `agent_done` | Claude Code finishes a turn / Codex turn completes | Another One DJ Khaled |
+| `agent_needs_input` | the agent is waiting on your permission or input | Huh? Ceeday |
+| `subagent_done` | a parallel subagent/worker finishes | Boing |
+| `agent_error` | a tool call fails (off by default — enable in the TUI) | none |
+
+Notes:
+
+- Installation is additive: existing hooks in `~/.claude/settings.json` are preserved,
+  and if Codex's `notify` already points at another program, the generated dispatcher
+  keeps forwarding to it.
+- Agent sounds **overlap** — three parallel subagents finishing together are all heard,
+  unlike shell events which cut off the previous sound.
+- Change any mapping with `soundfx tui` or `soundfx assign agent_done <soundId>`.
+- Already-running agent sessions pick the hooks up on their next restart.
+
 ## Computer-wide hotkey
 
 Beyond the terminal, soundfx can play a sound when you press a key sequence **anywhere** on your computer. By default, pressing `6` then `7` quickly (within 400ms) plays the "6 7 (Six Seven)" meme sound.

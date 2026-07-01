@@ -35,6 +35,11 @@ import {
   runHotkeyListener,
   uninstallLaunchAgent
 } from './hotkey.js';
+import {
+  getAgentHookStatus,
+  installAgentHooks,
+  uninstallAgentHooks
+} from './agents.js';
 import { runTui } from './tui.js';
 
 const args = process.argv.slice(2);
@@ -223,6 +228,61 @@ if (command === 'uninstall') {
   process.exit(result.ok ? 0 : 1);
 }
 
+// Called by Claude Code hooks / the Codex dispatcher. Plays with overlap so
+// parallel subagents finishing together are all heard. No suppression guard —
+// agent events are semantic, not racy shell-exit heuristics.
+if (command === 'agent-event') {
+  const eventId = args[1];
+  (async () => {
+    const config = await loadConfigWithSync();
+    const soundId = config[eventId];
+    appendEventLog(eventId, soundId);
+    if (soundId) {
+      await playSound(soundId, { overlap: true });
+    }
+    setTimeout(() => process.exit(0), 100);
+  })();
+}
+
+if (command === 'agents') {
+  const sub = args[1] || 'status';
+  if (sub === 'init' || sub === 'install') {
+    const result = installAgentHooks();
+    for (const message of result.messages) console.log(`- ${message}`);
+    console.log(`
+Agent events and their sounds (change with \`soundfx tui\` or \`soundfx assign\`):
+`);
+    const config = loadConfig();
+    for (const id of ['agent_done', 'agent_needs_input', 'subagent_done', 'agent_error']) {
+      const sound = findSound(config[id]);
+      console.log(`  ${id.padEnd(18)} -> ${sound?.name || 'none'}`);
+    }
+    console.log(`
+Already-running Claude Code sessions load hooks at startup — new sessions pick
+these up automatically. Test now with: soundfx test-event agent_done`);
+    process.exit(result.ok ? 0 : 1);
+  } else if (sub === 'uninstall') {
+    const result = uninstallAgentHooks();
+    for (const message of result.messages) console.log(`- ${message}`);
+    process.exit(result.ok ? 0 : 1);
+  } else if (sub === 'status') {
+    const status = getAgentHookStatus();
+    console.log(`
+soundfx agents
+
+- Claude Code hooks: ${status.claudeInstalled ? 'installed' : 'not installed'} (${status.claudeSettingsPath})
+- Codex dispatcher:  ${status.codexInstalled ? 'installed' : 'not installed'} (${status.dispatcherPath})
+
+Commands: agents init | agents uninstall | agents status
+`);
+    process.exit(0);
+  } else {
+    console.log(`Unknown agents command: ${sub}`);
+    console.log('Use: agents init | agents uninstall | agents status');
+    process.exit(1);
+  }
+}
+
 if (command === 'listen') {
   await runHotkeyListener();
 }
@@ -283,7 +343,7 @@ if (command === 'tui' || !command) {
   await runTui(args, launchContext);
 }
 
-if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup', 'uninstall', 'listen', 'hotkey'].includes(command)) {
+if (command && !['hook', 'install-hook', 'uninstall-hook', 'hook-status', 'event-log', 'playback-log', 'doctor', 'play', 'event', 'events', 'sounds', 'assign', 'test-event', 'test-sound', 'tui', 'setup', 'uninstall', 'listen', 'hotkey', 'agents', 'agent-event'].includes(command)) {
   printUsage();
   process.exit(1);
 }
