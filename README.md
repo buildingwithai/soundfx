@@ -107,7 +107,11 @@ Notes:
 
 ### Sound packs (CESP)
 
-soundfx plays **CESP** packs — the open [openpeon.json](https://github.com/PeonPing/openpeon)
+Out of the box, agent events play **soundfx Classic** — original synthesized earcons
+bundled with the package (6 voices; each parallel session keeps its own). Prefer the
+meme library? `soundfx packs off` switches agent sounds back to it.
+
+soundfx also plays any **CESP** pack — the open [openpeon.json](https://github.com/PeonPing/openpeon)
 format — so existing community packs work as-is:
 
 ```bash

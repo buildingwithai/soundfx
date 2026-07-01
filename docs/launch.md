@@ -74,9 +74,11 @@ session roster — the supervision layer, not just the ding.
 
 ## Pre-launch checklist
 
-- [ ] Original default sound pack recorded/licensed (BLOCKER — see
-      docs/sound-provenance.md)
-- [ ] Launch clip recorded with original pack
+- [x] Original default sound pack — DONE: `packs/soundfx-classic` (20 synthesized
+      earcons, MIT, bundled in the npm package, active by default; variant N =
+      per-session voice N; regenerate with `scripts/generate-classic-pack.mjs`)
+- [ ] Launch clip recorded with original pack (`soundfx packs use soundfx-classic`
+      is already the default — just run scripts/demo-parallel-agents.sh)
 - [ ] npm publish with packs + agents features
 - [ ] README quickstart verified on a clean machine
 - [ ] peon-ping comparison answer rehearsed (be generous — CESP compat means

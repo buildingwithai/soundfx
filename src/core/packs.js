@@ -2,21 +2,26 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import { fileURLToPath } from 'url';
 
 // CESP (Coding Event Sound Pack, openpeon.json) support — the open spec from
 // PeonPing/openpeon. Installing a pack gives agent events that pack's sounds;
 // every existing community pack works here unchanged.
 
 export const PACKS_DIR = path.join(os.homedir(), '.soundfx', 'packs');
+// Packs shipped inside the npm package (the original, fully-owned defaults).
+export const BUNDLED_PACKS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'packs');
 
-// CESP category -> soundfx agent event. Categories we don't fire are ignored;
-// subagent_done has no CESP category, so it draws from task.complete variants.
+// CESP category -> soundfx agent event. Categories we don't fire are ignored.
+// subagent_done maps to task.progress (semantically: progress on the main
+// task); packs without that category fall back to task.complete variants.
 export const CESP_EVENT_MAP = {
   agent_done: 'task.complete',
-  subagent_done: 'task.complete',
+  subagent_done: 'task.progress',
   agent_needs_input: 'input.required',
   agent_error: 'task.error'
 };
+const CESP_FALLBACK = { 'task.progress': 'task.complete' };
 
 /** Parse + minimally validate an openpeon.json manifest object.
  *  Returns { ok, manifest?, reason? } — never throws. */
@@ -41,32 +46,50 @@ export function validateManifest(raw) {
   return { ok: true, manifest };
 }
 
-/** Pick the sound file for an agent event from a pack. Random among the
- *  category's variants (the CESP-player convention — variety is the charm).
+/** Pick the sound file for an agent event from a pack.
+ *  With `variantIndex` (the session's voice), the pick is deterministic —
+ *  variant N is per-session voice N, so parallel agents stay distinguishable
+ *  by ear even with a pack active. Without it, random among variants (the
+ *  CESP-player convention — variety is the charm).
  *  Returns an absolute path, or null when the pack doesn't cover the event. */
-export function resolvePackSound(eventId, packDir, manifest, rng = Math.random) {
-  const category = CESP_EVENT_MAP[eventId];
+export function resolvePackSound(eventId, packDir, manifest, { rng = Math.random, variantIndex = null } = {}) {
+  let category = CESP_EVENT_MAP[eventId];
   if (!category) return null;
-  const sounds = manifest.categories?.[category]?.sounds;
+  let sounds = manifest.categories?.[category]?.sounds;
+  if (!sounds?.length && CESP_FALLBACK[category]) {
+    sounds = manifest.categories?.[CESP_FALLBACK[category]]?.sounds;
+  }
   if (!sounds?.length) return null;
-  const pick = sounds[Math.floor(rng() * sounds.length)];
+  const index = variantIndex !== null
+    ? variantIndex % sounds.length
+    : Math.floor(rng() * sounds.length);
+  const pick = sounds[index];
   const resolved = path.resolve(packDir, pick.file);
   // A manifest must not escape its pack directory ("../../etc/...").
   if (!resolved.startsWith(path.resolve(packDir) + path.sep)) return null;
   return resolved;
 }
 
-export function listInstalledPacks() {
-  if (!fs.existsSync(PACKS_DIR)) return [];
-  return fs.readdirSync(PACKS_DIR)
+function readPacksFrom(baseDir, bundled) {
+  if (!fs.existsSync(baseDir)) return [];
+  return fs.readdirSync(baseDir)
     .map((name) => {
-      const dir = path.join(PACKS_DIR, name);
+      const dir = path.join(baseDir, name);
       const manifestPath = path.join(dir, 'openpeon.json');
       if (!fs.existsSync(manifestPath)) return null;
       const result = validateManifest(fs.readFileSync(manifestPath, 'utf-8'));
-      return result.ok ? { name, dir, manifest: result.manifest } : null;
+      return result.ok ? { name, dir, manifest: result.manifest, bundled } : null;
     })
     .filter(Boolean);
+}
+
+/** User-installed packs plus the packs shipped inside the npm package.
+ *  A user-installed pack shadows a bundled pack with the same name. */
+export function listInstalledPacks() {
+  const installed = readPacksFrom(PACKS_DIR, false);
+  const names = new Set(installed.map((pack) => pack.name));
+  const bundledPacks = readPacksFrom(BUNDLED_PACKS_DIR, true).filter((pack) => !names.has(pack.name));
+  return [...installed, ...bundledPacks];
 }
 
 export function getPack(name) {

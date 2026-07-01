@@ -89,7 +89,11 @@ export function getDefaultConfig() {
     subagent_done: 'default-2',
     agent_error: 'none',
     __meta: { ...DEFAULT_CONFIG_META },
-    __hotkey: { ...DEFAULT_HOTKEY }
+    __hotkey: { ...DEFAULT_HOTKEY },
+    // Out-of-box agent sounds come from the bundled ORIGINAL pack (see
+    // docs/sound-provenance.md). `packs off` stores {active: null} — an
+    // explicit off, not a missing key, so the default doesn't resurrect it.
+    __packs: { active: 'soundfx-classic' }
   };
 }
 

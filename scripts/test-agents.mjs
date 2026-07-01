@@ -168,17 +168,48 @@ assert.strictEqual(isMuted({ until: T - 1 }, T), false, 'mute expires');
   assert.ok(!validateManifest({ cesp_version: '1.0', name: 'x', categories: { 'task.complete': { sounds: [{}] } } }).ok,
     'sound entry without file rejected');
 
-  assert.strictEqual(CESP_EVENT_MAP.subagent_done, 'task.complete', 'subagent_done draws from task.complete');
-  const done = resolvePackSound('agent_done', '/packs/test', manifest, () => 0);
+  assert.strictEqual(CESP_EVENT_MAP.subagent_done, 'task.progress', 'subagent_done maps to task.progress');
+  const done = resolvePackSound('agent_done', '/packs/test', manifest, { rng: () => 0 });
   assert.strictEqual(done, '/packs/test/sounds/done1.mp3', 'rng=0 picks first variant');
-  const done2 = resolvePackSound('agent_done', '/packs/test', manifest, () => 0.99);
+  const done2 = resolvePackSound('agent_done', '/packs/test', manifest, { rng: () => 0.99 });
   assert.strictEqual(done2, '/packs/test/sounds/done2.mp3', 'rng=.99 picks last variant');
-  assert.strictEqual(resolvePackSound('agent_needs_input', '/packs/test', manifest, () => 0),
+  assert.strictEqual(resolvePackSound('agent_needs_input', '/packs/test', manifest, { rng: () => 0 }),
     '/packs/test/sounds/help.mp3', 'input.required maps to needs_input');
   assert.strictEqual(resolvePackSound('agent_working', '/packs/test', manifest), null, 'unmapped event -> null');
 
+  // subagent_done falls back to task.complete when the pack has no task.progress
+  assert.strictEqual(resolvePackSound('subagent_done', '/packs/test', manifest, { rng: () => 0 }),
+    '/packs/test/sounds/done1.mp3', 'task.progress falls back to task.complete');
+
+  // per-session voice picks the variant deterministically (voice N -> variant N % len)
+  assert.strictEqual(resolvePackSound('agent_done', '/packs/test', manifest, { variantIndex: 1 }),
+    '/packs/test/sounds/done2.mp3', 'variantIndex picks its variant');
+  assert.strictEqual(resolvePackSound('agent_done', '/packs/test', manifest, { variantIndex: 5 }),
+    '/packs/test/sounds/done2.mp3', 'variantIndex wraps by modulo');
+
   const evil = { ...manifest, categories: { 'task.complete': { sounds: [{ file: '../../etc/passwd' }] } } };
   assert.strictEqual(resolvePackSound('agent_done', '/packs/test', evil), null, 'path escape blocked');
+}
+
+// --- Week 3+: the bundled original pack is valid and complete ---
+{
+  const { validateManifest, BUNDLED_PACKS_DIR } = await import('../src/core/packs.js');
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const manifestPath = path.join(BUNDLED_PACKS_DIR, 'soundfx-classic', 'openpeon.json');
+  const result = validateManifest(fs.readFileSync(manifestPath, 'utf-8'));
+  assert.ok(result.ok, 'bundled soundfx-classic manifest is valid CESP');
+  for (const category of ['task.complete', 'input.required', 'task.progress']) {
+    assert.ok(result.manifest.categories[category].sounds.length >= 6,
+      `${category} has a variant per voice (>=6)`);
+  }
+  // every referenced file actually exists in the package
+  for (const [category, entry] of Object.entries(result.manifest.categories)) {
+    for (const sound of entry.sounds) {
+      const file = path.join(BUNDLED_PACKS_DIR, 'soundfx-classic', sound.file);
+      assert.ok(fs.existsSync(file), `${category}: ${sound.file} exists`);
+    }
+  }
 }
 
 console.log('agent hooks: all checks passed');

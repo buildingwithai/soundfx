@@ -26,11 +26,11 @@ and the out-of-box defaults should move to original audio before a public launch
 
 ## Pre-launch actions
 
-1. **Ship an original default pack.** The CESP pack system makes this the easy
-   path: commission/generate ~12 original earcons (done / needs-input / error /
-   subagent variants x a few voices), package as `soundfx-classic` (CESP
-   `openpeon.json`), bundle THAT in the npm package as the out-of-box default.
-   Original audio -> we own it -> marketing-safe.
+1. **Ship an original default pack.** ✅ DONE (2026-07-01): `packs/soundfx-classic`
+   — 20 earcons synthesized from scratch with ffmpeg (`scripts/generate-classic-pack.mjs`,
+   deterministic, re-runnable), MIT, bundled in the npm package, **active by
+   default**. Pure synthesis = no third-party audio anywhere in the chain.
+   The meme library remains available via `soundfx packs off`.
 2. **Relabel the meme library as "community links"** in the TUI/README: clearly
    user-selected, streamed from third-party hosts, not ours, may break.
 3. **CESP packs are user-side-loaded** — licensing is the pack author's

@@ -1,0 +1,107 @@
+{
+  "cesp_version": "1.0",
+  "name": "soundfx-classic",
+  "display_name": "soundfx Classic",
+  "version": "1.0.0",
+  "author": "buildingwithai",
+  "license": "MIT",
+  "description": "Original synthesized earcons. Six voices — variant N is per-session voice N.",
+  "categories": {
+    "task.complete": {
+      "sounds": [
+        {
+          "file": "sounds/done-1.wav",
+          "label": "Done (voice 1)"
+        },
+        {
+          "file": "sounds/done-2.wav",
+          "label": "Done (voice 2)"
+        },
+        {
+          "file": "sounds/done-3.wav",
+          "label": "Done (voice 3)"
+        },
+        {
+          "file": "sounds/done-4.wav",
+          "label": "Done (voice 4)"
+        },
+        {
+          "file": "sounds/done-5.wav",
+          "label": "Done (voice 5)"
+        },
+        {
+          "file": "sounds/done-6.wav",
+          "label": "Done (voice 6)"
+        }
+      ]
+    },
+    "input.required": {
+      "sounds": [
+        {
+          "file": "sounds/needs-input-1.wav",
+          "label": "Needs you (voice 1)"
+        },
+        {
+          "file": "sounds/needs-input-2.wav",
+          "label": "Needs you (voice 2)"
+        },
+        {
+          "file": "sounds/needs-input-3.wav",
+          "label": "Needs you (voice 3)"
+        },
+        {
+          "file": "sounds/needs-input-4.wav",
+          "label": "Needs you (voice 4)"
+        },
+        {
+          "file": "sounds/needs-input-5.wav",
+          "label": "Needs you (voice 5)"
+        },
+        {
+          "file": "sounds/needs-input-6.wav",
+          "label": "Needs you (voice 6)"
+        }
+      ]
+    },
+    "task.progress": {
+      "sounds": [
+        {
+          "file": "sounds/tick-1.wav",
+          "label": "Subagent (voice 1)"
+        },
+        {
+          "file": "sounds/tick-2.wav",
+          "label": "Subagent (voice 2)"
+        },
+        {
+          "file": "sounds/tick-3.wav",
+          "label": "Subagent (voice 3)"
+        },
+        {
+          "file": "sounds/tick-4.wav",
+          "label": "Subagent (voice 4)"
+        },
+        {
+          "file": "sounds/tick-5.wav",
+          "label": "Subagent (voice 5)"
+        },
+        {
+          "file": "sounds/tick-6.wav",
+          "label": "Subagent (voice 6)"
+        }
+      ]
+    },
+    "task.error": {
+      "sounds": [
+        {
+          "file": "sounds/error-1.wav",
+          "label": "Error 1"
+        },
+        {
+          "file": "sounds/error-2.wav",
+          "label": "Error 2"
+        }
+      ]
+    }
+  }
+}

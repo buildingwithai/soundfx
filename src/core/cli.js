@@ -289,11 +289,14 @@ if (command === 'agent-event') {
 
     // Precedence: active CESP pack > per-session voice > per-event config.
     // A missing/broken pack falls through to voices — never silent by accident.
+    // The session's voiceIndex picks the pack variant deterministically, so
+    // parallel agents stay distinguishable by ear even with a pack active.
     const activePack = config.__packs?.active ? getPack(config.__packs.active) : null;
     if (activePack) {
-      const packFile = resolvePackSound(eventId, activePack.dir, activePack.manifest);
+      const variantIndex = prefs.perSessionVoices ? session?.voiceIndex ?? null : null;
+      const packFile = resolvePackSound(eventId, activePack.dir, activePack.manifest, { variantIndex });
       if (packFile && (await playSoundFile(packFile))) {
-        appendEventLog(eventId, `pack:${activePack.name}`);
+        appendEventLog(eventId, `pack:${activePack.name}${variantIndex !== null ? `#${variantIndex}` : ''}`);
         setTimeout(() => process.exit(0), 100);
         return;
       }
@@ -439,7 +442,7 @@ if (command === 'packs') {
   } else if (sub === 'off') {
     (async () => {
       const config = await loadConfigWithSync();
-      delete config.__packs;
+      config.__packs = { active: null }; // explicit off — a deleted key would resurrect the default pack
       await saveConfig(config);
       console.log('Pack deactivated — agent sounds use per-session voices again.');
       process.exit(0);
