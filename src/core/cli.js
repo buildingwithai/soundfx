@@ -36,8 +36,17 @@ import {
   uninstallLaunchAgent
 } from './hotkey.js';
 import {
+  SILENT_AGENT_EVENTS,
+  applySessionEvent,
   getAgentHookStatus,
+  getAgentPrefs,
   installAgentHooks,
+  isMuted,
+  isTerminalFrontmost,
+  readMuteState,
+  readSessions,
+  resolveAgentSound,
+  setMute,
   uninstallAgentHooks
 } from './agents.js';
 import { runTui } from './tui.js';
@@ -228,14 +237,49 @@ if (command === 'uninstall') {
   process.exit(result.ok ? 0 : 1);
 }
 
+// Claude Code hooks pipe a JSON payload (session_id, cwd, ...) on stdin.
+// Read it with a short timeout so manual terminal invocations don't hang.
+function readStdinJson(timeoutMs = 250) {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) return resolve(null);
+    let data = '';
+    const finish = () => {
+      try { resolve(JSON.parse(data)); } catch { resolve(null); }
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('end', () => { clearTimeout(timer); finish(); });
+    process.stdin.on('error', () => { clearTimeout(timer); resolve(null); });
+  });
+}
+
 // Called by Claude Code hooks / the Codex dispatcher. Plays with overlap so
 // parallel subagents finishing together are all heard. No suppression guard —
 // agent events are semantic, not racy shell-exit heuristics.
 if (command === 'agent-event') {
   const eventId = args[1];
   (async () => {
+    const payload = await readStdinJson();
+    const session = applySessionEvent(eventId, payload);
+
+    if (SILENT_AGENT_EVENTS.has(eventId)) {
+      process.exit(0);
+    }
+
+    if (isMuted(readMuteState())) {
+      appendEventLog(eventId, 'muted');
+      process.exit(0);
+    }
+
     const config = await loadConfigWithSync();
-    const soundId = config[eventId];
+    const prefs = getAgentPrefs(config);
+    if (prefs.focusAware && isTerminalFrontmost()) {
+      appendEventLog(eventId, 'suppressed-focus');
+      process.exit(0);
+    }
+
+    const soundId = resolveAgentSound(eventId, config, payload?.cwd, prefs, session?.voiceIndex ?? null);
     appendEventLog(eventId, soundId);
     if (soundId) {
       await playSound(soundId, { overlap: true });
@@ -265,20 +309,63 @@ these up automatically. Test now with: soundfx test-event agent_done`);
     const result = uninstallAgentHooks();
     for (const message of result.messages) console.log(`- ${message}`);
     process.exit(result.ok ? 0 : 1);
+  } else if (sub === 'mute') {
+    const arg = args[2];
+    if (arg === 'off') {
+      setMute(0);
+      console.log('Agent sounds unmuted.');
+    } else {
+      const minutes = Number.parseInt(arg, 10) || 60;
+      const state = setMute(minutes);
+      console.log(`Agent sounds muted until ${new Date(state.until).toLocaleTimeString()}.`);
+    }
+    process.exit(0);
+  } else if (sub === 'focus' || sub === 'voices') {
+    const value = args[2];
+    if (value !== 'on' && value !== 'off') {
+      console.log(`Usage: soundfx agents ${sub} <on|off>`);
+      process.exit(1);
+    }
+    (async () => {
+      const config = await loadConfigWithSync();
+      config.__agents = { ...getAgentPrefs(config), [sub === 'focus' ? 'focusAware' : 'perSessionVoices']: value === 'on' };
+      await saveConfig(config);
+      console.log(sub === 'focus'
+        ? `Focus-aware playback ${value}. (${value === 'on' ? 'Sounds stay quiet while a terminal/IDE is frontmost.' : 'Sounds always play.'})`
+        : `Per-session voices ${value}. (${value === 'on' ? 'Each project gets its own sound set.' : 'All sessions use your configured event sounds.'})`);
+      process.exit(0);
+    })();
   } else if (sub === 'status') {
     const status = getAgentHookStatus();
+    const prefs = getAgentPrefs(loadConfig());
+    const mute = readMuteState();
+    const sessions = Object.entries(readSessions())
+      .sort((a, b) => (b[1].lastEventAt || 0) - (a[1].lastEventAt || 0));
+    const stateLabels = { needs_input: 'needs you', working: 'working', done: 'done' };
+    const roster = sessions.length === 0
+      ? '  (no agent sessions yet)'
+      : sessions.map(([, s]) => {
+          const age = Math.max(0, Math.round((Date.now() - (s.lastEventAt || 0)) / 60000));
+          return `  ${(s.label || '?').padEnd(28)} ${stateLabels[s.state] || s.state}  · ${age}m ago`;
+        }).join('\n');
     console.log(`
 soundfx agents
 
 - Claude Code hooks: ${status.claudeInstalled ? 'installed' : 'not installed'} (${status.claudeSettingsPath})
 - Codex dispatcher:  ${status.codexInstalled ? 'installed' : 'not installed'} (${status.dispatcherPath})
+- Focus-aware playback: ${prefs.focusAware ? 'on' : 'off'}
+- Per-session voices: ${prefs.perSessionVoices ? 'on' : 'off'}
+- Muted: ${isMuted(mute) ? `yes, until ${new Date(mute.until).toLocaleTimeString()}` : 'no'}
 
-Commands: agents init | agents uninstall | agents status
+Sessions:
+${roster}
+
+Commands: agents init | uninstall | status | mute [minutes|off] | focus on|off | voices on|off
 `);
     process.exit(0);
   } else {
     console.log(`Unknown agents command: ${sub}`);
-    console.log('Use: agents init | agents uninstall | agents status');
+    console.log('Use: agents init | uninstall | status | mute [minutes|off] | focus on|off | voices on|off');
     process.exit(1);
   }
 }

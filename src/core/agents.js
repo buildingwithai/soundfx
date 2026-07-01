@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { getHookCommandSpec } from './index.js';
 
 // Shepherd week 1: wire AI coding agents (Claude Code + Codex) into soundfx.
@@ -18,12 +19,18 @@ export const AGENT_HOOK_MARKER = '# soundfx-agent-hook';
 // Notification covers "agent needs your permission/input" — the expensive state.
 // PostToolUseFailure is wired but defaults to no sound (opt-in via the TUI): it
 // fires on every failed tool call, which is too chatty to ding by default.
+// UserPromptSubmit / SessionEnd are silent state-tracking events: they keep the
+// menu-bar roster's Working list accurate and remove ended sessions.
 export const CLAUDE_HOOK_MAP = {
   Stop: 'agent_done',
   SubagentStop: 'subagent_done',
   Notification: 'agent_needs_input',
-  PostToolUseFailure: 'agent_error'
+  PostToolUseFailure: 'agent_error',
+  UserPromptSubmit: 'agent_working',
+  SessionEnd: 'agent_session_end'
 };
+
+export const SILENT_AGENT_EVENTS = new Set(['agent_working', 'agent_session_end']);
 
 function shQuote(value) {
   return `"${value.replace(/(["\\$`])/g, '\\$1')}"`;
@@ -228,4 +235,159 @@ export function getAgentHookStatus() {
     codexConfigPath: CODEX_CONFIG_PATH,
     dispatcherPath: CODEX_DISPATCHER_PATH
   };
+}
+
+// ---------- Week 2: session roster, per-session voices, focus, mute ----------
+
+export const AGENT_SESSIONS_PATH = path.join(os.homedir(), '.soundfx-agent-sessions.json');
+export const AGENT_MUTE_PATH = path.join(os.homedir(), '.soundfx-agent-mute.json');
+
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // evict sessions idle half a day
+
+// Per-session voices: the session's project directory hashes to one of these,
+// so parallel agents are distinguishable BY EAR. Each voice keeps the same
+// semantic trio (done / needs-input / subagent-done) in a different timbre.
+export const AGENT_VOICES = [
+  { agent_done: 'default-28', agent_needs_input: 'default-25', subagent_done: 'default-2' },  // Another One / Huh? / Boing
+  { agent_done: 'default-106', agent_needs_input: 'default-108', subagent_done: 'default-92' }, // Noice / Come On Man / yoshi ow
+  { agent_done: 'default-12', agent_needs_input: 'default-15', subagent_done: 'default-4' },  // Anime Wow / ACK / Clang
+  { agent_done: 'default-105', agent_needs_input: 'default-41', subagent_done: 'default-3' }, // Fetty Wap / shocking! / Shatter
+  { agent_done: 'default-26', agent_needs_input: 'default-40', subagent_done: 'default-5' },  // gah dayum / FBI open UP / Faaah
+  { agent_done: 'default-9', agent_needs_input: 'default-20', subagent_done: 'default-13' }   // Vine Boom / Daddyy Chill / anime ahh
+];
+
+/** Stable non-crypto hash (FNV-1a) so a project always keeps the same voice. */
+export function pickVoiceIndex(projectDir, voiceCount = AGENT_VOICES.length) {
+  let h = 0x811c9dc5;
+  for (const c of String(projectDir || '')) {
+    h ^= c.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h % voiceCount;
+}
+
+/** Which sound should this event make for this session? Voices override the
+ *  per-event config for the trio; agent_error always follows config (it is
+ *  opt-in). Voices off -> plain config mapping. An explicit voiceIndex (from
+ *  the session roster, collision-free) wins over the plain project hash. */
+export function resolveAgentSound(eventId, config, projectDir, prefs = getAgentPrefs(config), voiceIndex = null) {
+  if (prefs.perSessionVoices && (projectDir || voiceIndex !== null) && eventId !== 'agent_error') {
+    const voice = AGENT_VOICES[voiceIndex ?? pickVoiceIndex(projectDir)];
+    if (voice?.[eventId]) return voice[eventId];
+  }
+  return config[eventId];
+}
+
+export function getAgentPrefs(config) {
+  const saved = config && typeof config.__agents === 'object' ? config.__agents : {};
+  return {
+    focusAware: saved.focusAware !== false,
+    perSessionVoices: saved.perSessionVoices !== false
+  };
+}
+
+/** Pure roster reducer: applies one agent event to the sessions map.
+ *  States: working -> needs_input -> done; session_end removes; idle evicted. */
+export function reduceSessions(sessions, { eventId, sessionKey, label, project, now }) {
+  const next = {};
+  for (const [key, session] of Object.entries(sessions || {})) {
+    if (now - (session.lastEventAt || 0) < SESSION_TTL_MS) next[key] = session;
+  }
+  if (!sessionKey) return next;
+
+  if (eventId === 'agent_session_end') {
+    delete next[sessionKey];
+    return next;
+  }
+
+  const stateFor = {
+    agent_working: 'working',
+    agent_done: 'done',
+    agent_needs_input: 'needs_input',
+    subagent_done: next[sessionKey]?.state || 'working', // subagent done ≠ session done
+    agent_error: next[sessionKey]?.state || 'working'
+  };
+
+  // Voice assignment: hash is the starting point, but live sessions never share
+  // a voice — probe forward past voices already taken (collision-free while
+  // concurrent sessions <= AGENT_VOICES.length). Stable for the session's life.
+  let voiceIndex = next[sessionKey]?.voiceIndex;
+  if (voiceIndex === undefined) {
+    const taken = new Set(Object.values(next).map((s) => s.voiceIndex).filter((v) => v !== undefined));
+    voiceIndex = pickVoiceIndex(project || sessionKey);
+    for (let i = 0; i < AGENT_VOICES.length && taken.has(voiceIndex); i += 1) {
+      voiceIndex = (voiceIndex + 1) % AGENT_VOICES.length;
+    }
+  }
+
+  next[sessionKey] = {
+    label: label || next[sessionKey]?.label || sessionKey.slice(0, 8),
+    project: project || next[sessionKey]?.project || null,
+    state: stateFor[eventId] || next[sessionKey]?.state || 'working',
+    voiceIndex,
+    lastEvent: eventId,
+    lastEventAt: now
+  };
+  return next;
+}
+
+export function readSessions() {
+  const parsed = readJson(AGENT_SESSIONS_PATH);
+  return parsed?.sessions || {};
+}
+
+/** Updates the roster file and returns the session's entry (for its
+ *  collision-free voiceIndex), or null for manual/test invocations. */
+export function applySessionEvent(eventId, payload, now = Date.now()) {
+  const sessionKey = payload?.session_id || null;
+  if (!sessionKey) return null; // manual/test invocations don't join the roster
+  const project = payload?.cwd || null;
+  const label = project ? path.basename(project) : null;
+  const sessions = reduceSessions(readSessions(), { eventId, sessionKey, label, project, now });
+  fs.writeFileSync(AGENT_SESSIONS_PATH, JSON.stringify({ sessions }, null, 2));
+  return sessions[sessionKey] || null;
+}
+
+/** Pure mute check; state is { until: epochMs } or null. */
+export function isMuted(muteState, now = Date.now()) {
+  return Boolean(muteState?.until && now < muteState.until);
+}
+
+export function readMuteState() {
+  return readJson(AGENT_MUTE_PATH);
+}
+
+export function setMute(minutes) {
+  if (!minutes) {
+    try { fs.unlinkSync(AGENT_MUTE_PATH); } catch {}
+    return null;
+  }
+  const state = { until: Date.now() + minutes * 60 * 1000 };
+  fs.writeFileSync(AGENT_MUTE_PATH, JSON.stringify(state));
+  return state;
+}
+
+// Apps where the agent's output is already on screen — if one is frontmost,
+// the sound is redundant noise. ponytail: app-level heuristic; it can't tell
+// WHICH tmux pane or editor tab you're in. Upgrade path: per-terminal
+// integrations. Off switch: `soundfx agents focus off`.
+const TERMINAL_APPS = new Set([
+  'Terminal', 'iTerm2', 'Warp', 'Ghostty', 'kitty', 'Alacritty', 'WezTerm',
+  'Hyper', 'Code', 'Visual Studio Code', 'Cursor', 'Windsurf', 'Zed'
+]);
+
+/** True when a terminal/IDE is the frontmost app (macOS only; uses lsappinfo,
+ *  which needs no privacy permission). Fails open: unknown -> not suppressed. */
+export function isTerminalFrontmost() {
+  if (os.platform() !== 'darwin') return false;
+  try {
+    const front = spawnSync('lsappinfo', ['front'], { encoding: 'utf8', timeout: 500 });
+    const asn = front.stdout?.trim();
+    if (!asn) return false;
+    const info = spawnSync('lsappinfo', ['info', '-only', 'name', asn], { encoding: 'utf8', timeout: 500 });
+    const match = info.stdout?.match(/"name"="([^"]+)"/);
+    return Boolean(match && TERMINAL_APPS.has(match[1]));
+  } catch {
+    return false;
+  }
 }

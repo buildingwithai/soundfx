@@ -153,11 +153,59 @@ final class HotkeyEngine {
     }
 }
 
+// MARK: - Agent session roster (written by `soundfx agent-event`, read here)
+
+struct AgentSession: Codable {
+    let label: String?
+    let project: String?
+    let state: String?
+    let lastEvent: String?
+    let lastEventAt: Double?
+}
+
+struct SessionsFile: Codable { let sessions: [String: AgentSession] }
+struct MuteFile: Codable { let until: Double? }
+
+enum AgentStore {
+    static let sessionsURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".soundfx-agent-sessions.json")
+    static let muteURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".soundfx-agent-mute.json")
+
+    static func readSessions() -> [(key: String, session: AgentSession)] {
+        guard let data = try? Data(contentsOf: sessionsURL),
+              let parsed = try? JSONDecoder().decode(SessionsFile.self, from: data) else { return [] }
+        return parsed.sessions
+            .map { (key: $0.key, session: $0.value) }
+            .sorted { ($0.session.lastEventAt ?? 0) > ($1.session.lastEventAt ?? 0) }
+    }
+
+    static func muteUntil() -> Date? {
+        guard let data = try? Data(contentsOf: muteURL),
+              let parsed = try? JSONDecoder().decode(MuteFile.self, from: data),
+              let until = parsed.until, until / 1000 > Date().timeIntervalSince1970 else { return nil }
+        return Date(timeIntervalSince1970: until / 1000)
+    }
+
+    static func mute(minutes: Double) {
+        let until = (Date().timeIntervalSince1970 + minutes * 60) * 1000
+        if let data = try? JSONEncoder().encode(MuteFile(until: until)) {
+            try? data.write(to: muteURL)
+        }
+    }
+
+    static func unmute() {
+        try? FileManager.default.removeItem(at: muteURL)
+    }
+}
+
 // MARK: - Menu-bar app
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let engine = HotkeyEngine.shared
+    private var refreshTimer: Timer?
+    private var lastSnapshot = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -168,15 +216,127 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             engine.start()
         }
         rebuildMenu()
+
+        // Poll the roster files; rebuild only when their content changes.
+        // ponytail: 2s polling over FSEvents — the files are tiny and infrequent.
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.refreshIfChanged()
+        }
+    }
+
+    private func refreshIfChanged() {
+        let snapshot = snapshotString()
+        if snapshot != lastSnapshot {
+            rebuildMenu()
+        }
+    }
+
+    private func snapshotString() -> String {
+        let sessions = AgentStore.readSessions()
+            .map { "\($0.key):\($0.session.state ?? "?"):\(Int($0.session.lastEventAt ?? 0 / 60000))" }
+            .joined(separator: ",")
+        let mute = AgentStore.muteUntil()?.timeIntervalSince1970 ?? 0
+        return "\(sessions)|\(mute)|\(engine.isListening)"
+    }
+
+    private func timeAgo(_ epochMs: Double?) -> String {
+        guard let ms = epochMs else { return "" }
+        let minutes = Int(max(0, Date().timeIntervalSince1970 - ms / 1000) / 60)
+        if minutes < 1 { return "now" }
+        if minutes < 60 { return "\(minutes)m" }
+        return "\(minutes / 60)h \(minutes % 60)m"
+    }
+
+    private func truncated(_ text: String) -> String {
+        guard text.count > 38 else { return text }
+        return "\(text.prefix(18))…\(text.suffix(18))"
+    }
+
+    private func sectionHeader(_ title: String) -> NSMenuItem {
+        if #available(macOS 14.0, *) {
+            return NSMenuItem.sectionHeader(title: title)
+        }
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    private func sessionItem(_ session: AgentSession, symbol: String, stateLabel: String) -> NSMenuItem {
+        let title = "\(truncated(session.label ?? "unknown")) — \(stateLabel) · \(timeAgo(session.lastEventAt))"
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false // informational rows; state is carried by text + symbol, never color alone
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: stateLabel)
+        return item
     }
 
     private func rebuildMenu() {
-        statusItem.button?.title = engine.isListening ? "6·7" : "6·7 ⏸"
+        lastSnapshot = snapshotString()
+        let sessions = AgentStore.readSessions()
+        let needsYou = sessions.filter { $0.session.state == "needs_input" }
+        let working = sessions.filter { $0.session.state == "working" }
+        let done = sessions.filter { $0.session.state == "done" }.prefix(5)
+        let muteUntil = AgentStore.muteUntil()
+
+        // Menu-bar title: quiet by default; the needs-you count is the one
+        // signal important enough to surface without opening the menu.
+        var title = engine.isListening ? "6·7" : "6·7 ⏸"
+        if !needsYou.isEmpty { title += " (\(needsYou.count))" }
+        statusItem.button?.title = title
 
         let menu = NSMenu()
+        menu.delegate = self
+
+        // Content first: the roster. Chrome (app controls) defers to the bottom.
+        if sessions.isEmpty {
+            let empty = NSMenuItem(title: "No agent sessions yet", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+            let hint = NSMenuItem(title: "Sounds are wired — start a Claude Code or Codex run.", action: nil, keyEquivalent: "")
+            hint.isEnabled = false
+            menu.addItem(hint)
+        } else {
+            if !needsYou.isEmpty {
+                menu.addItem(sectionHeader("Needs You"))
+                for entry in needsYou {
+                    menu.addItem(sessionItem(entry.session, symbol: "exclamationmark.circle.fill", stateLabel: "waiting for you"))
+                }
+            }
+            if !working.isEmpty {
+                menu.addItem(sectionHeader("Working"))
+                for entry in working {
+                    menu.addItem(sessionItem(entry.session, symbol: "circle.dotted", stateLabel: "working"))
+                }
+            }
+            if !done.isEmpty {
+                menu.addItem(sectionHeader("Done"))
+                for entry in done {
+                    menu.addItem(sessionItem(entry.session, symbol: "checkmark.circle", stateLabel: "done"))
+                }
+            }
+        }
+
+        menu.addItem(.separator())
+
+        // The one primary action for this region: silence agent sounds.
+        if let muteUntil = muteUntil {
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            let unmute = NSMenuItem(title: "Unmute (muted until \(formatter.string(from: muteUntil)))",
+                                    action: #selector(unmuteAgents), keyEquivalent: "")
+            unmute.target = self
+            unmute.image = NSImage(systemSymbolName: "speaker.slash", accessibilityDescription: "muted")
+            menu.addItem(unmute)
+        } else {
+            let mute = NSMenuItem(title: "Mute Agent Sounds for 1 Hour", action: #selector(muteAgents), keyEquivalent: "m")
+            mute.target = self
+            mute.image = NSImage(systemSymbolName: "speaker.slash", accessibilityDescription: "mute")
+            menu.addItem(mute)
+        }
+
+        menu.addItem(.separator())
 
         let toggle = NSMenuItem(
-            title: engine.isListening ? "Listening: On" : "Listening: Off",
+            title: engine.isListening ? "Hotkey 6→7: On" : "Hotkey 6→7: Off",
             action: #selector(toggleListening),
             keyEquivalent: ""
         )
@@ -190,13 +350,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(grant)
         }
 
-        let test = NSMenuItem(title: "Test sound", action: #selector(testSound), keyEquivalent: "")
+        let test = NSMenuItem(title: "Test Hotkey Sound", action: #selector(testSound), keyEquivalent: "")
         test.target = self
         menu.addItem(test)
 
-        menu.addItem(.separator())
-
-        let login = NSMenuItem(title: "Launch at login", action: #selector(toggleLogin), keyEquivalent: "")
+        let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin), keyEquivalent: "")
         login.target = self
         login.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
         menu.addItem(login)
@@ -208,6 +366,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quit)
 
         statusItem.menu = menu
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        refreshIfChanged()
+    }
+
+    @objc private func muteAgents() {
+        AgentStore.mute(minutes: 60)
+        rebuildMenu()
+    }
+
+    @objc private func unmuteAgents() {
+        AgentStore.unmute()
+        rebuildMenu()
     }
 
     @objc private func toggleListening() {

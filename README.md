@@ -76,6 +76,18 @@ soundfx agents uninstall # removes only soundfx's hooks, restores your Codex not
 | `subagent_done` | a parallel subagent/worker finishes | Boing |
 | `agent_error` | a tool call fails (off by default — enable in the TUI) | none |
 
+Running several agents in parallel? Each session gets its own **voice** (a distinct
+sound set, collision-free while you have up to 6 concurrent sessions), so you know
+*which* agent finished or needs you without looking. The macOS menu-bar app
+(`macos-app/`) shows the roster — **Needs You / Working / Done** — and a
+one-click *Mute Agent Sounds for 1 Hour*.
+
+```bash
+soundfx agents mute [minutes|off]   # silence agent sounds (default 60)
+soundfx agents focus on|off         # focus-aware: stay quiet while a terminal/IDE is frontmost (default on)
+soundfx agents voices on|off        # per-session voices (default on)
+```
+
 Notes:
 
 - Installation is additive: existing hooks in `~/.claude/settings.json` are preserved,
@@ -83,7 +95,10 @@ Notes:
   keeps forwarding to it.
 - Agent sounds **overlap** — three parallel subagents finishing together are all heard,
   unlike shell events which cut off the previous sound.
-- Change any mapping with `soundfx tui` or `soundfx assign agent_done <soundId>`.
+- Focus-aware playback is an app-level heuristic (it can't see tmux panes); turn it
+  off if you run agents in a terminal you keep frontmost.
+- Change any mapping with `soundfx tui` or `soundfx assign agent_done <soundId>`
+  (with voices on, the voice set wins for done/needs-input/subagent sounds).
 - Already-running agent sessions pick the hooks up on their next restart.
 
 ## Computer-wide hotkey
