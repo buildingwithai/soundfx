@@ -3,5 +3,10 @@
   "buildCommand": "npm run build:website",
   "outputDirectory": "dist",
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "git": {
+    "deploymentEnabled": {
+      "backup/documents-20261007/**": false
+    }
+  }
 }
